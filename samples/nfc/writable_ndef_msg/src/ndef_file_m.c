@@ -29,23 +29,26 @@
 static const uint8_t m_url[] = /**< Default NDEF message: URL "nordicsemi.com". */
 	{'n', 'o', 'r', 'd', 'i', 'c', 's', 'e', 'm', 'i', '.', 'c', 'o', 'm'};
 
- /* Flash block size in bytes */
+/* Flash partition for NVS */
+#define NVS_FLASH_DEVICE FLASH_AREA_DEVICE(storage)
+/* Flash block size in bytes */
 #define NVS_SECTOR_SIZE  (DT_PROP(DT_CHOSEN(zephyr_flash), erase_block_size))
 #define NVS_SECTOR_COUNT 2
- /* Start address of the filesystem in flash */
+/* Start address of the filesystem in flash */
 #define NVS_STORAGE_OFFSET FLASH_AREA_OFFSET(storage)
 
 static struct nvs_fs fs = {
 	.sector_size = NVS_SECTOR_SIZE,
 	.sector_count = NVS_SECTOR_COUNT,
 	.offset = NVS_STORAGE_OFFSET,
+	.flash_device = NVS_FLASH_DEVICE,
 };
 
 int ndef_file_setup(void)
 {
 	int err;
 
-	err = nvs_init(&fs, DT_CHOSEN_ZEPHYR_FLASH_CONTROLLER_LABEL);
+	err = nvs_mount(&fs);
 	if (err < 0) {
 		printk("Cannot initialize NVS!\n");
 	}
