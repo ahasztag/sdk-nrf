@@ -33,6 +33,8 @@ manifest:
       url-base: https://github.com/NordicSemiconductor
     - name: memfault
       url-base: https://github.com/memfault
+    - name: ahasztag
+      url-base: https://github.com/ahasztag
 
   # If not otherwise specified, the projects below should be obtained
   # from the ncs remote.
@@ -52,7 +54,8 @@ manifest:
     # https://developer.nordicsemi.com/nRF_Connect_SDK/doc/latest/zephyr/guides/modules.html
     - name: zephyr
       repo-path: sdk-zephyr
-      revision: 79b77b4f6130d0db539a6f6655b3e03818ab98a6
+      remote: ahasztag
+      revision: DRX_ADJUST_fix_test
       import:
         # In addition to the zephyr repository itself, NCS also
         # imports the contents of zephyr/west.yml at the above
@@ -111,7 +114,8 @@ manifest:
     - name: nrfxlib
       repo-path: sdk-nrfxlib
       path: nrfxlib
-      revision: c6ee51f2877d88b4c8cd9bd889a029e4ec7a7581
+      remote: ahasztag
+      revision: DRX_ADJUST_fix_test
     - name: trusted-firmware-m
       repo-path: sdk-trusted-firmware-m
       path: modules/tee/tf-m/trusted-firmware-m
@@ -134,7 +138,8 @@ manifest:
     - name: nrf-802154
       repo-path: sdk-nrf-802154
       path: nrf-802154
-      revision: 3cc749721224cd1e0dd43e778bbba7bf7cca6e75
+      remote: ahasztag
+      revision: KRKNWK-13782-fix-incorrect-csl-phase
       groups:
       - nrf-802154
     - name: cjson
