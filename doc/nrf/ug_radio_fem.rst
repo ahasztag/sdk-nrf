@@ -174,7 +174,7 @@ To use nRF21540 in SPI or mixed mode, complete the following steps:
                spi-if = <&nrf_radio_fem_spi>
          };
       };
-#. Optionally replace the SPI bus device name ``nrf_radio_fem_spi``.
+#. Optionally replace the device name ``name_of_fem_node``.
 #. Replace the pin numbers provided for each of the required properties:
 
    * ``tx-en-gpios`` - GPIO characteristic of the device that controls the ``TX_EN`` signal of nRF21540.
@@ -230,7 +230,6 @@ To use nRF21540 in SPI or mixed mode, complete the following steps:
 
    In this example, the nRF21540 is controlled by the ``spi3`` bus.
    Replace the SPI bus according to your hardware design.
-   Replace the SPI bus device name ``nrf_radio_fem_spi`` with the name from the previous step.
 
 #. Create alternative pinctrl entries for SPI3 and replace the ``pinctrl-N`` and ``pinctrl-names`` properties.
 

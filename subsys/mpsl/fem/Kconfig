@@ -15,6 +15,11 @@ config MPSL_FEM_NRF21540_GPIO_SUPPORT
 	bool
 	default $(dt_nodelabel_has_compat,nrf_radio_fem,$(DT_COMPAT_NORDIC_NRF21540_GPIO))
 
+config MPSL_FEM_NRF21540_GPIO_SPI_SUPPORT
+	bool
+	depends on MPSL_FEM_NRF21540_GPIO_SUPPORT
+	default $(dt_nodelabel_has_prop,nrf_radio_fem,spi-if)
+
 config MPSL_FEM_GENERIC_TWO_CTRL_PINS_SUPPORT
 	bool
 	default $(dt_nodelabel_has_compat,nrf_radio_fem,$(DT_COMPAT_GENERIC_FEM_2_CTRL_PIN))
@@ -39,11 +44,16 @@ config MPSL_FEM_PIN_FORWARDER
 
 if MPSL_FEM || MPSL_FEM_PIN_FORWARDER
 
+config MPSL_FEM_USED
+	bool "A radio front-end module is used in the application"
+	default n
+
 choice MPSL_FEM_CHOICE
 	prompt "Radio front-end module (FEM) type"
 
 config MPSL_FEM_NRF21540_GPIO
 	depends on MPSL_FEM_NRF21540_GPIO_SUPPORT
+	select MPSL_FEM_USED
 	select NRFX_GPIOTE
 	select NRFX_PPI if SOC_SERIES_NRF52X
 	select NRFX_DPPI if SOC_SERIES_NRF53X
@@ -51,8 +61,20 @@ config MPSL_FEM_NRF21540_GPIO
 	help
 	  FEM device is nRF21540 and its control mode is GPIO.
 
+config MPSL_FEM_NRF21540_GPIO_SPI
+	depends on MPSL_FEM_NRF21540_GPIO_SPI_SUPPORT
+	select EXPERIMENTAL
+	select MPSL_FEM_USED
+	select NRFX_GPIOTE
+	select NRFX_PPI if SOC_SERIES_NRF52X
+	select NRFX_DPPI if SOC_SERIES_NRF53X
+	bool "nRF21540 front-end module in GPIO + SPI mode"
+	help
+	  FEM device is nRF21540 and it uses SPI.
+
 config MPSL_FEM_SIMPLE_GPIO
 	depends on MPSL_FEM_GENERIC_TWO_CTRL_PINS_SUPPORT
+	select MPSL_FEM_USED
 	select NRFX_GPIOTE
 	select NRFX_PPI if SOC_SERIES_NRF52X
 	select NRFX_DPPI if SOC_SERIES_NRF53X
@@ -65,7 +87,7 @@ config MPSL_FEM_SIMPLE_GPIO
 
 endchoice	# MPSL_FEM_CHOICE
 
-if MPSL_FEM_NRF21540_GPIO && MPSL_FEM
+if (MPSL_FEM_NRF21540_GPIO || MPSL_FEM_NRF21540_GPIO_SPI) && MPSL_FEM
 
 config MPSL_FEM_NRF21540_TX_GAIN_DB
 	int "TX gain of the nRF21540 PA amplifier in dB"
@@ -112,7 +134,7 @@ config MPSL_FEM_NRF21540_RUNTIME_PA_GAIN_CONTROL
 	  If this option is disabled the PA gain will be constant during run-time and is
 	  determined by MPSL_FEM_NRF21540_TX_GAIN_DB.
 
-endif   # MPSL_FEM_NRF21540_GPIO && MPSL_FEM
+endif   # (MPSL_FEM_NRF21540_GPIO || MPSL_FEM_NRF21540_GPIO_SPI) && MPSL_FEM
 
 endif	# MPSL_FEM || MPSL_FEM_PIN_FORWARDER
 

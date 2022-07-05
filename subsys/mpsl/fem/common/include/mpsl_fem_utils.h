@@ -7,9 +7,10 @@
 #ifndef MPSL_FEM_UTILS_H__
 #define MPSL_FEM_UTILS_H__
 
-#if defined(CONFIG_MPSL_FEM_PIN_FORWARDER)
-
 #include <stdint.h>
+#include <mpsl_fem_config_common.h>
+
+#if defined(CONFIG_MPSL_FEM_PIN_FORWARDER)
 
 /** @brief Embeds GPIO port number into GPIO pin number.
  *
@@ -18,6 +19,15 @@
  *                     should be done for.
  */
 void mpsl_fem_pin_extend_with_port(uint8_t *pin, const char *lbl);
+
+#else
+
+/** @brief Converts pin number extended with port number to an mpsl_fem_pin_t structure,
+ *
+ * @param[in]     pin_num    Pin number extended with port number.
+ * @param[inout]  p_fem_pin  Pointer to be filled with pin represented as an mpsl_fem_pin_t struct.
+ */
+void mpsl_fem_extended_pin_to_mpsl_fem_pin(uint8_t pin_num, mpsl_fem_pin_t* p_fem_pin);
 
 #endif /* defined(CONFIG_MPSL_FEM_PIN_FORWARDER) */
 

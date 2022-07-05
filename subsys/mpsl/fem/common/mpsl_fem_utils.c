@@ -5,13 +5,13 @@
  */
 
 #include <mpsl_fem_utils.h>
-
-#if defined(CONFIG_MPSL_FEM_PIN_FORWARDER)
-
 #include <stdbool.h>
 #include <string.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/sys/__assert.h>
+
+#if defined(CONFIG_MPSL_FEM_PIN_FORWARDER)
+
 
 void mpsl_fem_pin_extend_with_port(uint8_t *pin, const char *lbl)
 {
@@ -39,6 +39,48 @@ void mpsl_fem_pin_extend_with_port(uint8_t *pin, const char *lbl)
 	(void)pin;
 
 	__ASSERT(false, "Unknown GPIO port DT label");
+}
+
+#else
+
+static void pin_num_to_gpio_lbl_and_pin(uint8_t raw_pin, const char **gpio_lbl, uint8_t* port_pin)
+{
+    *port_pin = raw_pin;
+
+    if (raw_pin < 32) {
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(gpio0), okay)
+        *gpio_lbl = DT_LABEL(DT_NODELABEL(gpio0));
+#else
+        __ASSERT(false, "Unknown GPIO port DT label");
+#endif
+    } else {
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(gpio1), okay)
+        *port_pin -= 32;
+        *gpio_lbl = DT_LABEL(DT_NODELABEL(gpio1));
+#else
+        __ASSERT(false, "Unknown GPIO port DT label");
+#endif
+    }
+}
+
+void mpsl_fem_extended_pin_to_mpsl_fem_pin(uint8_t pin_num, mpsl_fem_pin_t* p_fem_pin)
+{
+    const char *gpio_lbl = NULL;
+
+    pin_num_to_gpio_lbl_and_pin(pin_num, &gpio_lbl, &p_fem_pin->port_pin);
+
+    if (strcmp(gpio_lbl, DT_LABEL(DT_NODELABEL(gpio0))) == 0) {
+        p_fem_pin->p_port =  (NRF_GPIO_Type *) DT_REG_ADDR(DT_NODELABEL(gpio0));
+        p_fem_pin->port_no  = 0;
+        return;
+    }
+    if (strcmp(gpio_lbl, DT_LABEL(DT_NODELABEL(gpio1))) == 0) {
+        p_fem_pin->p_port =  (NRF_GPIO_Type *) DT_REG_ADDR(DT_NODELABEL(gpio1));
+        p_fem_pin->port_no  = 1;
+        return;
+    }
+
+    __ASSERT(false, "Unknown GPIO port DT label");
 }
 
 #endif /* defined(CONFIG_MPSL_FEM_PIN_FORWARDER) */
