@@ -297,7 +297,7 @@ nrf_802154_sl_lptimer_platform_result_t nrf_802154_platform_sl_lptimer_hw_task_p
 	nrf_802154_sl_mcu_critical_enter(mcu_cs_state);
 
 	/* For triggering to take place a safe margin is 2 lpticks from `now`. */
-	if ((z_nrf_rtc_timer_read() + 2) > fire_lpticks) {
+	if ((z_nrf_rtc_timer_read() + 4) > fire_lpticks) {
 		/* it is too late */
 		nrf_802154_sl_mcu_critical_exit(mcu_cs_state);
 		cc_unbind(m_hw_task.chan, ppi_channel);
