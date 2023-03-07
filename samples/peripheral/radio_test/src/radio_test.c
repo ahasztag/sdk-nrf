@@ -16,6 +16,7 @@
 #endif /* NRF53_SERIES */
 
 #include <nrfx_timer.h>
+#include <nrf_erratas.h>
 #include <zephyr/kernel.h>
 #include <zephyr/random/rand32.h>
 
@@ -409,11 +410,37 @@ static void radio_disable(void)
 #endif /* CONFIG_FEM */
 }
 
+#if NRF53_ERRATA_117_ENABLE_WORKAROUND
+/* Workaround for Errata 117 "RADIO: Changing MODE requires additional
+ * configuration" found at the Errata document for your device located at
+ * https://infocenter.nordicsemi.com/index.jsp
+ */
+static void errata_117_handle(uint8_t mode)
+{
+	if (mode == NRF_RADIO_MODE_IEEE802154_250KBIT
+	    || mode == NRF_RADIO_MODE_BLE_2MBIT
+		|| mode == NRF_RADIO_MODE_NRF_2MBIT) {
+		*((volatile uint32_t *)0x41008588) = *((volatile uint32_t *)0x01FF0084);
+	} else {
+		*((volatile uint32_t *)0x41008588) = *((volatile uint32_t *)0x01FF0080);
+	}
+}
+
+#else
+
+static void errata_117_handle(uint8_t mode)
+{
+	(void)mode;
+}
+#endif /* NRF53_ERRATA_117_ENABLE_WORKAROUND */
+
+
 static void radio_unmodulated_tx_carrier(uint8_t mode, int8_t txpower, uint8_t channel)
 {
 	radio_disable();
 
 	nrf_radio_mode_set(NRF_RADIO, mode);
+	errata_117_handle(mode);
 	nrf_radio_shorts_enable(NRF_RADIO, NRF_RADIO_SHORT_READY_START_MASK);
 	radio_power_set(mode, channel, txpower);
 
@@ -463,6 +490,7 @@ static void radio_modulated_tx_carrier(uint8_t mode, int8_t txpower, uint8_t cha
 	}
 
 	nrf_radio_mode_set(NRF_RADIO, mode);
+	errata_117_handle(mode);
 	radio_power_set(mode, channel, txpower);
 
 	radio_channel_set(mode, channel);
@@ -484,6 +512,7 @@ static void radio_rx(uint8_t mode, uint8_t channel, enum transmit_pattern patter
 	radio_disable();
 
 	nrf_radio_mode_set(NRF_RADIO, mode);
+	errata_117_handle(mode);
 	nrf_radio_shorts_enable(NRF_RADIO,
 				NRF_RADIO_SHORT_READY_START_MASK |
 				NRF_RADIO_SHORT_END_START_MASK);
@@ -550,6 +579,7 @@ static void radio_modulated_tx_carrier_duty_cycle(uint8_t mode, int8_t txpower,
 	generate_modulated_rf_packet(mode, pattern);
 
 	nrf_radio_mode_set(NRF_RADIO, mode);
+	errata_117_handle(mode);
 	nrf_radio_shorts_enable(NRF_RADIO,
 				NRF_RADIO_SHORT_READY_START_MASK |
 				NRF_RADIO_SHORT_END_DISABLE_MASK);
