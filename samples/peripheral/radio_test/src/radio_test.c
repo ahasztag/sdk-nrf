@@ -434,13 +434,23 @@ static void errata_117_handle(uint8_t mode)
 }
 #endif /* NRF53_ERRATA_117_ENABLE_WORKAROUND */
 
+static void radio_mode_set(uint8_t mode)
+{
+	nrf_radio_mode_set(NRF_RADIO, mode);
+
+	if (mode == NRF_RADIO_MODE_IEEE802154_250KBIT)
+	{
+		*((volatile uint32_t *)0x41008584) = 0x40081B08;
+	} else {
+		*((volatile uint32_t *)0x41008584) = 0x00091B08;
+	}
+}
 
 static void radio_unmodulated_tx_carrier(uint8_t mode, int8_t txpower, uint8_t channel)
 {
 	radio_disable();
 
-	nrf_radio_mode_set(NRF_RADIO, mode);
-	errata_117_handle(mode);
+	radio_mode_set(mode);
 	nrf_radio_shorts_enable(NRF_RADIO, NRF_RADIO_SHORT_READY_START_MASK);
 	radio_power_set(mode, channel, txpower);
 
@@ -489,8 +499,7 @@ static void radio_modulated_tx_carrier(uint8_t mode, int8_t txpower, uint8_t cha
 		break;
 	}
 
-	nrf_radio_mode_set(NRF_RADIO, mode);
-	errata_117_handle(mode);
+	radio_mode_set(mode);
 	radio_power_set(mode, channel, txpower);
 
 	radio_channel_set(mode, channel);
@@ -511,8 +520,7 @@ static void radio_rx(uint8_t mode, uint8_t channel, enum transmit_pattern patter
 {
 	radio_disable();
 
-	nrf_radio_mode_set(NRF_RADIO, mode);
-	errata_117_handle(mode);
+	radio_mode_set(mode);
 	nrf_radio_shorts_enable(NRF_RADIO,
 				NRF_RADIO_SHORT_READY_START_MASK |
 				NRF_RADIO_SHORT_END_START_MASK);
@@ -578,8 +586,7 @@ static void radio_modulated_tx_carrier_duty_cycle(uint8_t mode, int8_t txpower,
 	radio_disable();
 	generate_modulated_rf_packet(mode, pattern);
 
-	nrf_radio_mode_set(NRF_RADIO, mode);
-	errata_117_handle(mode);
+	radio_mode_set(mode);
 	nrf_radio_shorts_enable(NRF_RADIO,
 				NRF_RADIO_SHORT_READY_START_MASK |
 				NRF_RADIO_SHORT_END_DISABLE_MASK);
