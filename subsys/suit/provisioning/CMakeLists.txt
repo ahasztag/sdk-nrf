@@ -163,3 +163,29 @@ include(soc/nrf54h20.cmake)
 endif() # CONFIG_SUIT_MPI_SOC_NRF54H20
 
 endif() # CONFIG_SUIT_MPI_GENERATE
+
+# Set up the output artifact name, which contains all merged hex files.
+#
+# Usage:
+#   suit_setup_output_artifacts()
+#
+function(suit_setup_output_artifacts)
+  set_property(TARGET runners_yaml_props_target PROPERTY hex_file "${CONFIG_SUIT_ENVELOPE_OUTPUT_ARTIFACT}")
+
+  get_property(extra_post_build_commands GLOBAL PROPERTY extra_post_build_commands)
+
+  # Remove the mergehex command to build uicr_merged.hex file from the list of post build commands
+  string(
+    REGEX
+    REPLACE
+    "COMMAND;[^\;]+;[^\;]+mergehex\.py;-o;[^\;]+uicr_merged.hex;[^\;]+uicr.hex;[^\;]+zephyr.hex;"
+    ""
+    extra_post_build_commands
+    "${extra_post_build_commands}"
+  )
+  set_property(GLOBAL PROPERTY extra_post_build_commands ${extra_post_build_commands})
+endfunction()
+
+if(CONFIG_SUIT_ENVELOPE)
+  suit_setup_output_artifacts()
+endif()
