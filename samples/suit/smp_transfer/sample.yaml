@@ -1,0 +1,99 @@
+#
+# Copyright (c) 2023 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+sample:
+  name: SUIT update through SMP sample
+  description: Sample application that updates firmware using SUIT and SMP protocol
+tests:
+  subsys.suit.smp_transfer.v1:
+    extra_configs:
+      - CONFIG_APP_VERSION=1
+      - CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION="./"
+    platform_allow: nrf54h20dk_nrf54h20_cpuapp
+    build_only: true
+    tags: suit
+
+  subsys.suit.smp_transfer.root_with_nordic_top.v1:
+    extra_configs:
+      - CONFIG_APP_VERSION=1
+      - CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION="./"
+      - CONFIG_SUIT_SECDOM_UPDATE_LOG=y
+    platform_allow: nrf54h20dk_nrf54h20_cpuapp
+    build_only: true
+    tags: suit suit_root_with_nordic_top
+
+  subsys.suit.smp_transfer.root_with_nordic_top.v2:
+    extra_configs:
+      - CONFIG_APP_VERSION=2
+      - CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION="./"
+      - CONFIG_SUIT_SECDOM_UPDATE_LOG=y
+    platform_allow: nrf54h20dk_nrf54h20_cpuapp
+    build_only: true
+    tags: suit suit_root_with_nordic_top
+
+  subsys.suit.smp_transfer.bt.v1:
+    extra_args: OVERLAY_CONFIG="overlay-bt.conf"
+    extra_configs:
+      - CONFIG_APP_VERSION=1
+      - CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION="./"
+    platform_allow: nrf54h20dk_nrf54h20_cpuapp
+    build_only: true
+    tags: suit bluetooth
+
+  subsys.suit.smp_transfer.v2:
+    extra_configs:
+      - CONFIG_APP_VERSION=2
+      - CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION="./"
+    platform_allow: nrf54h20dk_nrf54h20_cpuapp
+    build_only: true
+    tags: suit
+
+  subsys.suit.smp_transfer.bt.v2:
+    extra_args: OVERLAY_CONFIG="overlay-bt.conf"
+    extra_configs:
+      - CONFIG_APP_VERSION=2
+      - CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION="./"
+    platform_allow: nrf54h20dk_nrf54h20_cpuapp
+    build_only: true
+    tags: suit bluetooth
+
+  subsys.suit.smp_transfer.full.v1:
+    extra_configs:
+      - CONFIG_APP_VERSION=1
+      - CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION="./"
+      - CONFIG_SUIT_DFU_CANDIDATE_PROCESSING_FULL=y
+    platform_allow: nrf54h20dk_nrf54h20_cpuapp
+    build_only: true
+    tags: suit
+
+  subsys.suit.smp_transfer.full.v2:
+    extra_configs:
+      - CONFIG_APP_VERSION=2
+      - CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION="./"
+      - CONFIG_SUIT_DFU_CANDIDATE_PROCESSING_FULL=y
+    platform_allow: nrf54h20dk_nrf54h20_cpuapp
+    build_only: true
+    tags: suit
+
+  subsys.suit.smp_transfer.full.bt.v1:
+    extra_args: OVERLAY_CONFIG="overlay-bt.conf"
+    extra_configs:
+      - CONFIG_APP_VERSION=1
+      - CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION="./"
+      - CONFIG_SUIT_DFU_CANDIDATE_PROCESSING_FULL=y
+    platform_allow: nrf54h20dk_nrf54h20_cpuapp
+    build_only: true
+    tags: suit bluetooth
+
+  subsys.suit.smp_transfer.full.bt.v2:
+    extra_args: OVERLAY_CONFIG="overlay-bt.conf"
+    extra_configs:
+      - CONFIG_APP_VERSION=2
+      - CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION="./"
+      - CONFIG_SUIT_DFU_CANDIDATE_PROCESSING_FULL=y
+    platform_allow: nrf54h20dk_nrf54h20_cpuapp
+    build_only: true
+    tags: suit bluetooth
