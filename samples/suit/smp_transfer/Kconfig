@@ -1,0 +1,35 @@
+#
+# Copyright (c) 2023 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+config APP_VERSION
+	int "Application version"
+	default 1
+
+config SUIT_ENVELOPE_SEQUENCE_NUM
+	default APP_VERSION
+
+config SUIT_SECDOM_UPDATE_LOG
+	bool "Enable Secure Domain logs in update candidate"
+	default n
+	select EXPERIMENTAL
+
+config SUIT_SECDOM_EXTMEM_SUPPORT
+	bool "Enable external flash support in SDFW"
+	select EXPERIMENTAL
+
+config SUIT_BUILD_FLASH_COMPANION
+	bool "Enable build of the flash companion firmware"
+	select EXPERIMENTAL
+
+config SUIT_EXTERNAL_MEMORY_SUPPORT
+	bool "Enable options needed to use external flash during DFU"
+	depends on SUIT_DFU_CANDIDATE_PROCESSING_FULL
+	imply SUIT_SECDOM_EXTMEM_SUPPORT
+	imply SUIT_BUILD_FLASH_COMPANION
+	imply SUIT_STREAM_SOURCE_FLASH
+	select EXPERIMENTAL
+
+source "Kconfig.zephyr"
