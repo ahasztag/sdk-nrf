@@ -25,16 +25,19 @@ function(suit_copy_input_template destination_template_directory source_template
   cmake_path(GET source_template_path FILENAME source_filename)
   set(destination_template_path "${destination_template_directory}/${source_filename}")
   if(NOT EXISTS ${source_template_path})
-    message(FATAL_ERROR "DFU: Could not find default SUIT template: '${source_template_name}' -> '${source_template_path}'. Corrupted configuration?")
+    message(SEND_ERROR "DFU: Could not find default SUIT template: '${source_template_path}'. Corrupted configuration?")
+    return()
   endif()
   if(NOT EXISTS ${destination_template_path})
     # copy default template and create digest
     configure_file(${source_template_path} ${destination_template_path} COPYONLY)
-    suit_create_digest(${destination_template_path} "${destination_template_path}.digest")
+    file(SHA256 ${destination_template_path} checksum_variable)
+    file(WRITE "${destination_template_path}.digest" ${checksum_variable})
   endif()
   if(NOT EXISTS "${destination_template_path}.digest")
     # restore digest removed by user to discard warning about changes in the source template
-    suit_create_digest(${source_template_path} "${destination_template_path}.digest")
+    file(SHA256 ${source_template_path} checksum_variable)
+    file(WRITE "${destination_template_path}.digest" ${checksum_variable})
   endif()
   cmake_path(GET source_template_path FILENAME copied_filename)
   set(${output_variable} "${destination_template_directory}/${copied_filename}" PARENT_SCOPE)
@@ -51,7 +54,8 @@ endfunction()
 function(suit_check_template_digest destination_template_directory source_template_path)
     suit_set_absolute_or_relative_path(${source_template_path} ${PROJECT_BINARY_DIR} source_template_path)
     if(NOT EXISTS ${source_template_path})
-      message(FATAL_ERROR "DFU: Could not find default SUIT template: '${kconfig_template_name}' -> '${source_template_path}'. Corrupted configuration?")
+      message(SEND_ERROR "DFU: Could not find default SUIT template: '${source_template_path}'. Corrupted configuration?")
+      return()
     endif()
     cmake_path(GET source_template_path FILENAME source_filename)
     set(input_file "${destination_template_directory}/${source_filename}")
@@ -60,7 +64,7 @@ function(suit_check_template_digest destination_template_directory source_templa
     set(DIGEST_STORAGE "${input_file}.digest")
     file(STRINGS ${DIGEST_STORAGE} CHECKSUM_STORED)
     if(NOT ${CHECKSUM_DEFAULT} STREQUAL ${CHECKSUM_STORED})
-      message(FATAL_ERROR "DFU: Outdated input SUIT template detected - consider update.\n"
+      message(SEND_ERROR "DFU: Outdated input SUIT template detected - consider update.\n"
       "Some changes has been done to the SUIT_ENVELOPE_DEFAULT_TEMPLATE which was used to create your ${input_file}.\n"
       "Please review these changes and remove ${input_file}.digest file to bypass this error.\n"
       )
@@ -90,7 +94,7 @@ endfunction()
 #   'relative_root' - root folder used in case of relative path
 #   'output_variable' - variable to store results
 function(suit_set_absolute_or_relative_path path relative_root output_variable)
-  if(NOT path MATCHES "^/.*" AND NOT path MATCHES "^[a-zA-Z]:/.*")
+  if(NOT IS_ABSOLUTE ${path})
     file(REAL_PATH "${relative_root}/${path}" path)
   endif()
   set(${output_variable} "${path}" PARENT_SCOPE)
@@ -105,12 +109,12 @@ endfunction()
 #   'input_file' - path to input unsigned envelope
 #   'output_file' - path to output signed envelope
 function(suit_sign_envelope input_file output_file)
-  sysbuild_get(NRF_DIR IMAGE ${DEFAULT_IMAGE} VAR NRF_DIR CACHE)
-  cmake_path(GET NRF_DIR PARENT_PATH NRF_DIR_PARENT)
+  cmake_path(GET ZEPHYR_NRF_MODULE_DIR PARENT_PATH NRF_DIR_PARENT)
   sysbuild_get(CONFIG_SUIT_ENVELOPE_SIGN_SCRIPT IMAGE ${DEFAULT_IMAGE} VAR CONFIG_SUIT_ENVELOPE_SIGN_SCRIPT KCONFIG)
   suit_set_absolute_or_relative_path(${CONFIG_SUIT_ENVELOPE_SIGN_SCRIPT} ${NRF_DIR_PARENT} SIGN_SCRIPT)
-  if (NOT EXISTS ${SIGN_SCRIPT})
-    message(FATAL_ERROR "DFU: ${CONFIG_SUIT_ENVELOPE_SIGN_SCRIPT} does not exist. Corrupted configuration?")
+  if(NOT EXISTS ${SIGN_SCRIPT})
+    message(SEND_ERROR "DFU: ${CONFIG_SUIT_ENVELOPE_SIGN_SCRIPT} does not exist. Corrupted configuration?")
+    return()
   endif()
   set_property(
     GLOBAL APPEND PROPERTY SUIT_POST_BUILD_COMMANDS
@@ -151,12 +155,13 @@ endfunction()
 # Create binary envelope from input yaml file.
 #
 # Usage:
-#   suit_create_envelope(<input_file> <output_file>)
+#   suit_create_envelope(<input_file> <output_file> <create_signature>)
 #
 # Parameters:
 #   'input_file' - path to input yaml configuration
 #   'output_file' - path to output binary suit envelope
-function(suit_create_envelope input_file output_file)
+#   'create_signature' - sign the envelope if set to true
+function(suit_create_envelope input_file output_file create_signature)
   set_property(
     GLOBAL APPEND PROPERTY SUIT_POST_BUILD_COMMANDS
     COMMAND ${PYTHON_EXECUTABLE} ${SUIT_GENERATOR_CLI_SCRIPT}
@@ -164,8 +169,7 @@ function(suit_create_envelope input_file output_file)
     --input-file ${input_file}
     --output-file ${output_file}
   )
-  sysbuild_get(CONFIG_SUIT_ENVELOPE_SIGN IMAGE ${DEFAULT_IMAGE} VAR CONFIG_SUIT_ENVELOPE_SIGN KCONFIG)
-  if (CONFIG_SUIT_ENVELOPE_SIGN)
+  if (create_signature)
     suit_sign_envelope(${output_file} ${output_file})
   endif()
 endfunction()
@@ -223,26 +227,24 @@ endfunction()
 #   suit_create_package()
 #
 function(suit_create_package)
-
-  #if(NOT EXISTS "${SUIT_ROOT_DIRECTORY}")
-    add_custom_target(
-      suit_prepare_output_folder
-      ALL
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${SUIT_ROOT_DIRECTORY}
-      COMMENT
-      "Create DFU output directory"
-    )
-  #endif()
+  add_custom_target(
+    suit_prepare_output_folder
+    ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SUIT_ROOT_DIRECTORY}
+    COMMENT
+    "Create DFU output directory"
+  )
   set(SUIT_OUTPUT_ARTIFACTS_ITEMS)
   set(SUIT_OUTPUT_ARTIFACTS_TARGETS)
   set(CORE_ARGS)
   set(STORAGE_BOOT_ARGS)
-  if (!CONFIG_HW_REVISION_SOC1)
-    set(STORAGE_UPDATE_ARGS)
-  endif()
 
   sysbuild_get(CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION IMAGE ${DEFAULT_IMAGE} VAR CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION KCONFIG)
   suit_set_absolute_or_relative_path(${CONFIG_SUIT_ENVELOPE_EDITABLE_TEMPLATES_LOCATION} ${PROJECT_BINARY_DIR} INPUT_TEMPLATES_DIRECTORY)
+  sysbuild_get(ENVELOPE_SIGNATURE IMAGE ${DEFAULT_IMAGE} VAR CONFIG_SUIT_ENVELOPE_SIGN KCONFIG)
+  if (NOT DEFINED ENVELOPE_SIGNATURE)
+    set(ENVELOPE_SIGNATURE FALSE)
+  endif()
 
   foreach(image ${IMAGES})
     sysbuild_get(INPUT_ENVELOPE_JINJA_FILE IMAGE ${image} VAR CONFIG_SUIT_ENVELOPE_TEMPLATE KCONFIG)
@@ -250,6 +252,10 @@ function(suit_create_package)
     sysbuild_get(BINARY_DIR IMAGE ${image} VAR APPLICATION_BINARY_DIR CACHE)
     sysbuild_get(BINARY_FILE IMAGE ${image} VAR CONFIG_KERNEL_BIN_NAME KCONFIG)
     suit_copy_input_template(${INPUT_TEMPLATES_DIRECTORY} "${INPUT_ENVELOPE_JINJA_FILE}" ENVELOPE_JINJA_FILE)
+    if(NOT DEFINED ENVELOPE_JINJA_FILE)
+      message(SEND_ERROR "DFU: Creation of SUIT artifacts failed.")
+      return()
+    endif()
     suit_check_template_digest(${INPUT_TEMPLATES_DIRECTORY} "${INPUT_ENVELOPE_JINJA_FILE}")
     set(BINARY_FILE "${BINARY_FILE}.bin")
 
@@ -263,7 +269,7 @@ function(suit_create_package)
 
     suit_copy_artifact_to_output_directory(${target} ${BINARY_DIR}/zephyr/${BINARY_FILE})
     suit_render_template(${ENVELOPE_JINJA_FILE} ${ENVELOPE_YAML_FILE} "${CORE_ARGS}")
-    suit_create_envelope(${ENVELOPE_YAML_FILE} ${ENVELOPE_SUIT_FILE})
+    suit_create_envelope(${ENVELOPE_YAML_FILE} ${ENVELOPE_SUIT_FILE} ${ENVELOPE_SIGNATURE})
     list(APPEND STORAGE_BOOT_ARGS
       --input-envelope ${ENVELOPE_SUIT_FILE}
     )
@@ -282,7 +288,7 @@ function(suit_create_package)
     set(ROOT_ENVELOPE_YAML_FILE ${SUIT_ROOT_DIRECTORY}${ROOT_NAME}.yaml)
     set(ROOT_ENVELOPE_SUIT_FILE ${SUIT_ROOT_DIRECTORY}${ROOT_NAME}.suit)
     suit_render_template(${ROOT_ENVELOPE_JINJA_FILE} ${ROOT_ENVELOPE_YAML_FILE} "${CORE_ARGS}")
-    suit_create_envelope(${ROOT_ENVELOPE_YAML_FILE} ${ROOT_ENVELOPE_SUIT_FILE})
+    suit_create_envelope(${ROOT_ENVELOPE_YAML_FILE} ${ROOT_ENVELOPE_SUIT_FILE} ${ENVELOPE_SIGNATURE})
       list(APPEND STORAGE_BOOT_ARGS
         --input-envelope ${ROOT_ENVELOPE_SUIT_FILE}
       )
@@ -302,32 +308,7 @@ function(suit_create_package)
   suit_register_post_build_commands()
 endfunction()
 
-# Build flash companion image.
-#
-# Usage:
-#   suit_build_flash_companion()
-#
-function(suit_build_flash_companion)
-  foreach (overlay IN LISTS DTC_OVERLAY_FILE EXTRA_DTC_OVERLAY_FILE)
-    # Apply all overlays to the build of the companion image to ensure that
-    # both the child and parent have identical memory and peripheral permissions.
-    if (EXISTS "${CMAKE_SOURCE_DIR}/${overlay}")
-      set(overlay_abs "${CMAKE_SOURCE_DIR}/${overlay}")
-      add_overlay_dts(flash_companion "${overlay_abs}")
-    else ()
-      add_overlay_dts(flash_companion "${overlay}")
-    endif()
-  endforeach()
-
-  # fixme - sysbuild shall be used to build flash_companion
-  add_child_image(
-    NAME flash_companion
-    SOURCE_DIR "${NRF_DIR}/samples/suit/flash_companion"
-    BOARD ${BOARD}
-  )
-endfunction()
-
-# Setup task to create final and mertged artifact.
+# Setup task to create final and merged artifact.
 #
 # Usage:
 #   suit_setup_merge()
@@ -362,7 +343,7 @@ function(suit_setup_merge)
       --overlap replace
       -o ${OUTPUT_HEX_FILE}
        ${ARTIFACTS_TO_MERGE}
-      # fixme: uicr_merged is overwriten by new content, runners_yaml_props_target could be used to define
+      # fixme: uicr_merged is overwritten by new content, runners_yaml_props_target could be used to define
       #     what shall be flashed, but not sure where to set this! Remove --overlap if ready!
       #     example usage: set_property(TARGET runners_yaml_props_target PROPERTY hex_file ${merged_hex_file})
        COMMAND ${CMAKE_COMMAND} -E copy ${OUTPUT_HEX_FILE} ${IMAGE_BINARY_DIR}/zephyr/uicr_merged.hex
@@ -373,5 +354,5 @@ endfunction()
 # Enable SUIT envelope generation only if DEFAULT_IMAGE has it enabled.
 sysbuild_get(CONFIG_SUIT_ENVELOPE IMAGE ${DEFAULT_IMAGE} VAR CONFIG_SUIT_ENVELOPE KCONFIG)
 if(CONFIG_SUIT_ENVELOPE)
-    suit_create_package()
+  suit_create_package()
 endif()
