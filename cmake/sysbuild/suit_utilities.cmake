@@ -4,6 +4,10 @@
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
 
+set(SUIT_GENERATOR_BUILD_SCRIPT "${ZEPHYR_SUIT_GENERATOR_MODULE_DIR}/ncs/build.py")
+set(SUIT_GENERATOR_CLI_SCRIPT "${ZEPHYR_SUIT_GENERATOR_MODULE_DIR}/suit_generator/cli.py")
+set(SUIT_OUTPUT_ARTIFACTS_DIRECTORY "DFU")
+
 # Copy artifact to the common SUIT output directory.
 #
 # Usage:
