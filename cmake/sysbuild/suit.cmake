@@ -5,10 +5,6 @@
 #
 include(${CMAKE_CURRENT_LIST_DIR}/suit_utilities.cmake)
 
-if(NOT DEFINED SUIT_ROOT_DIRECTORY)
-  set(SUIT_ROOT_DIRECTORY ${APPLICATION_BINARY_DIR}/${SUIT_OUTPUT_ARTIFACTS_DIRECTORY}/)
-endif()
-
 # Copy input template into destination directory.
 #
 # Usage:
