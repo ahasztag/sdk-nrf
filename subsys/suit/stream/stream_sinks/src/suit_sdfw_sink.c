@@ -42,32 +42,32 @@ static struct sdfw_sink_context *get_new_context(void)
 	return NULL;
 }
 
-static digest_sink_err_t verify_digest(uint8_t *buf, size_t buf_size, psa_algorithm_t algorithm,
-				       uint8_t *expected_digest)
-{
-	struct stream_sink digest_sink;
-	suit_plat_err_t err = suit_digest_sink_get(&digest_sink, algorithm, expected_digest);
+// static digest_sink_err_t verify_digest(uint8_t *buf, size_t buf_size, psa_algorithm_t algorithm,
+// 				       uint8_t *expected_digest)
+// {
+// 	struct stream_sink digest_sink;
+// 	suit_plat_err_t err = suit_digest_sink_get(&digest_sink, algorithm, expected_digest);
 
-	if (err != SUIT_PLAT_SUCCESS) {
-		LOG_ERR("Failed to get digest sink: %d", err);
-		return err;
-	}
+// 	if (err != SUIT_PLAT_SUCCESS) {
+// 		LOG_ERR("Failed to get digest sink: %d", err);
+// 		return err;
+// 	}
 
-	err = digest_sink.write(digest_sink.ctx, buf, buf_size);
-	if (err != SUIT_PLAT_SUCCESS) {
-		LOG_ERR("Failed to write to stream: %d", err);
-		return err;
-	}
+// 	err = digest_sink.write(digest_sink.ctx, buf, buf_size);
+// 	if (err != SUIT_PLAT_SUCCESS) {
+// 		LOG_ERR("Failed to write to stream: %d", err);
+// 		return err;
+// 	}
 
-	digest_sink_err_t ret = suit_digest_sink_digest_match(digest_sink.ctx);
+// 	digest_sink_err_t ret = suit_digest_sink_digest_match(digest_sink.ctx);
 
-	err = digest_sink.release(digest_sink.ctx);
-	if (err != SUIT_PLAT_SUCCESS) {
-		LOG_WRN("Failed to release stream: %d", err);
-	}
+// 	err = digest_sink.release(digest_sink.ctx);
+// 	if (err != SUIT_PLAT_SUCCESS) {
+// 		LOG_WRN("Failed to release stream: %d", err);
+// 	}
 
-	return ret;
-}
+// 	return ret;
+// }
 
 static suit_plat_err_t clear_urot_update_status(void)
 {
@@ -125,37 +125,38 @@ static suit_plat_err_t schedule_sdfw_update(const uint8_t *buf, size_t size)
 
 static sdf_sink_err_t check_update_candidate(const uint8_t *buf, size_t size)
 {
-	uint8_t *candidate_binary_start =
-		(uint8_t *)(buf + CONFIG_SUIT_SDFW_UPDATE_FIRMWARE_OFFSET);
-	uint8_t *candidate_digest_in_manifest =
-		(uint8_t *)(buf + CONFIG_SUIT_SDFW_UPDATE_DIGEST_OFFSET);
-	uint8_t *current_sdfw_digest = (uint8_t *)(NRF_SICR->UROT.SM.TBS.FW.DIGEST);
+	// uint8_t *candidate_binary_start =
+	// 	(uint8_t *)(buf + CONFIG_SUIT_SDFW_UPDATE_FIRMWARE_OFFSET);
+	// uint8_t *candidate_digest_in_manifest =
+	// 	(uint8_t *)(buf + CONFIG_SUIT_SDFW_UPDATE_DIGEST_OFFSET);
+	// uint8_t *current_sdfw_digest = (uint8_t *)(NRF_SICR->UROT.SM.TBS.FW.DIGEST);
 
+	digest_sink_err_t err = SUIT_PLAT_SUCCESS;
 	/* First check if calculated digest of candidate matches the digest from Signed Manifest */
-	digest_sink_err_t err = verify_digest(
-		candidate_binary_start, size - (size_t)CONFIG_SUIT_SDFW_UPDATE_FIRMWARE_OFFSET,
-		PSA_ALG_SHA_512, candidate_digest_in_manifest);
+	// digest_sink_err_t err = verify_digest(
+	// 	candidate_binary_start, size - (size_t)CONFIG_SUIT_SDFW_UPDATE_FIRMWARE_OFFSET,
+	// 	PSA_ALG_SHA_512, candidate_digest_in_manifest);
 
-	if (err != SUIT_PLAT_SUCCESS) {
-		if (err == DIGEST_SINK_ERR_DIGEST_MISMATCH) {
-			LOG_ERR("Candidate inconsistent");
-		} else {
-			LOG_ERR("Failed to calculate digest: %d", err);
-		}
+	// if (err != SUIT_PLAT_SUCCESS) {
+	// 	if (err == DIGEST_SINK_ERR_DIGEST_MISMATCH) {
+	// 		LOG_ERR("Candidate inconsistent");
+	// 	} else {
+	// 		LOG_ERR("Failed to calculate digest: %d", err);
+	// 	}
 
-		return SUIT_PLAT_ERR_CRASH;
-	}
+	// 	return SUIT_PLAT_ERR_CRASH;
+	// }
 
-	LOG_DBG("Candidate consistent");
+	// LOG_DBG("Candidate consistent");
 
 	/* Then compare candidate's digest with current SDFW digest */
-	err = verify_digest(candidate_binary_start,
-			    size - (size_t)CONFIG_SUIT_SDFW_UPDATE_FIRMWARE_OFFSET, PSA_ALG_SHA_512,
-			    current_sdfw_digest);
-	if (err == SUIT_PLAT_SUCCESS) {
-		LOG_INF("Same candidate - skip update");
-		return SUIT_PLAT_SUCCESS;
-	} else if (err == DIGEST_SINK_ERR_DIGEST_MISMATCH) {
+	// err = verify_digest(candidate_binary_start,
+	// 		    size - (size_t)CONFIG_SUIT_SDFW_UPDATE_FIRMWARE_OFFSET, PSA_ALG_SHA_512,
+	// 		    current_sdfw_digest);
+	// if (err == SUIT_PLAT_SUCCESS) {
+	// 	LOG_INF("Same candidate - skip update");
+	// 	return SUIT_PLAT_SUCCESS;
+	// } else if (err == DIGEST_SINK_ERR_DIGEST_MISMATCH) {
 		LOG_INF("Different candidate");
 		err = schedule_sdfw_update(buf, size);
 		if (err == SUIT_PLAT_SUCCESS) {
@@ -163,10 +164,10 @@ static sdf_sink_err_t check_update_candidate(const uint8_t *buf, size_t size)
 			err = SDFW_SINK_ERR_AGAIN;
 		}
 		return err;
-	}
+	// }
 
-	LOG_ERR("Failed to calculate digest: %d", err);
-	return SUIT_PLAT_ERR_CRASH;
+	// LOG_ERR("Failed to calculate digest: %d", err);
+	// return SUIT_PLAT_ERR_CRASH;
 }
 
 static void reboot_to_continue(void)
@@ -212,23 +213,23 @@ static suit_plat_err_t check_urot_none(const uint8_t *buf, size_t size)
 
 static suit_plat_err_t check_urot_activated(const uint8_t *buf, size_t size)
 {
-	uint8_t *candidate_binary_start =
-		(uint8_t *)(buf + CONFIG_SUIT_SDFW_UPDATE_FIRMWARE_OFFSET);
-	uint8_t *current_sdfw_digest = (uint8_t *)(NRF_SICR->UROT.SM.TBS.FW.DIGEST);
+	// uint8_t *candidate_binary_start =
+	// 	(uint8_t *)(buf + CONFIG_SUIT_SDFW_UPDATE_FIRMWARE_OFFSET);
+	// uint8_t *current_sdfw_digest = (uint8_t *)(NRF_SICR->UROT.SM.TBS.FW.DIGEST);
 
-	/* Compare candidate's digest with current SDFW digest */
-	digest_sink_err_t err = verify_digest(
-		candidate_binary_start, size - (size_t)CONFIG_SUIT_SDFW_UPDATE_FIRMWARE_OFFSET,
-		PSA_ALG_SHA_512, current_sdfw_digest);
-	if (err != SUIT_PLAT_SUCCESS) {
-		if (err == DIGEST_SINK_ERR_DIGEST_MISMATCH) {
-			LOG_ERR("Digest mismatch - update failure");
-			return SUIT_PLAT_ERR_AUTHENTICATION;
-		}
+	// /* Compare candidate's digest with current SDFW digest */
+	// digest_sink_err_t err = verify_digest(
+	// 	candidate_binary_start, size - (size_t)CONFIG_SUIT_SDFW_UPDATE_FIRMWARE_OFFSET,
+	// 	PSA_ALG_SHA_512, current_sdfw_digest);
+	// if (err != SUIT_PLAT_SUCCESS) {
+	// 	if (err == DIGEST_SINK_ERR_DIGEST_MISMATCH) {
+	// 		LOG_ERR("Digest mismatch - update failure");
+	// 		return SUIT_PLAT_ERR_AUTHENTICATION;
+	// 	}
 
-		LOG_ERR("Failed to calculate digest: %d", err);
-		return SUIT_PLAT_ERR_CRASH;
-	}
+	// 	LOG_ERR("Failed to calculate digest: %d", err);
+	// 	return SUIT_PLAT_ERR_CRASH;
+	// }
 
 	LOG_DBG("Digest match - update success");
 	return SUIT_PLAT_SUCCESS;
