@@ -5,7 +5,7 @@
  */
 
 /*
- * Generated using zcbor version 0.8.1
+ * Generated using zcbor version 0.8.99
  * https://github.com/NordicSemiconductor/zcbor
  * Generated with a --default-max-qty of 3
  */
@@ -144,14 +144,6 @@ static bool encode_psa_generate_random_req(zcbor_state_t *state,
 					   const struct psa_generate_random_req *input);
 static bool encode_psa_generate_key_req(zcbor_state_t *state,
 					const struct psa_generate_key_req *input);
-static bool encode_psa_sign_hash_start_req(zcbor_state_t *state,
-					   const struct psa_sign_hash_start_req *input);
-static bool encode_psa_sign_hash_abort_req(zcbor_state_t *state,
-					   const struct psa_sign_hash_abort_req *input);
-static bool encode_psa_verify_hash_start_req(zcbor_state_t *state,
-					     const struct psa_verify_hash_start_req *input);
-static bool encode_psa_verify_hash_abort_req(zcbor_state_t *state,
-					     const struct psa_verify_hash_abort_req *input);
 static bool encode_psa_pake_setup_req(zcbor_state_t *state, const struct psa_pake_setup_req *input);
 static bool encode_psa_pake_set_role_req(zcbor_state_t *state,
 					 const struct psa_pake_set_role_req *input);
@@ -885,8 +877,7 @@ static bool encode_psa_aead_encrypt_req(zcbor_state_t *state,
 		((zcbor_uint32_encode(state, (&(*input).psa_aead_encrypt_req_alg)))) &&
 		((zcbor_uint32_encode(state, (&(*input).psa_aead_encrypt_req_p_nonce)))) &&
 		((zcbor_uint32_encode(state, (&(*input).psa_aead_encrypt_req_nonce_length)))) &&
-		((zcbor_uint32_encode(state,
-				      (&(*input).psa_aead_encrypt_req_p_additional_data)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_encrypt_req_p_additional_data)))) &&
 		((zcbor_uint32_encode(state,
 				      (&(*input).psa_aead_encrypt_req_additional_data_length)))) &&
 		((zcbor_uint32_encode(state, (&(*input).psa_aead_encrypt_req_p_plaintext)))) &&
@@ -911,23 +902,21 @@ static bool encode_psa_aead_decrypt_req(zcbor_state_t *state,
 {
 	zcbor_log("%s\r\n", __func__);
 
-	bool tmp_result = ((
-		(((zcbor_uint32_put(state, (45)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_key)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_alg)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_p_nonce)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_nonce_length)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_aead_decrypt_req_p_additional_data)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_aead_decrypt_req_additional_data_length)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_p_ciphertext)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_aead_decrypt_req_ciphertext_length)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_p_plaintext)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_plaintext_size)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_aead_decrypt_req_p_plaintext_length)))))));
+	bool tmp_result = (((
+		((zcbor_uint32_put(state, (45)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_key)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_alg)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_p_nonce)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_nonce_length)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_p_additional_data)))) &&
+		((zcbor_uint32_encode(state,
+				      (&(*input).psa_aead_decrypt_req_additional_data_length)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_p_ciphertext)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_ciphertext_length)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_p_plaintext)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_decrypt_req_plaintext_size)))) &&
+		((zcbor_uint32_encode(state,
+				      (&(*input).psa_aead_decrypt_req_p_plaintext_length)))))));
 
 	if (!tmp_result) {
 		zcbor_trace_file(state);
@@ -986,14 +975,13 @@ static bool encode_psa_aead_generate_nonce_req(zcbor_state_t *state,
 {
 	zcbor_log("%s\r\n", __func__);
 
-	bool tmp_result = ((
-		(((zcbor_uint32_put(state, (48)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_aead_generate_nonce_req_p_handle)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_aead_generate_nonce_req_p_nonce)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_aead_generate_nonce_req_nonce_size)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_aead_generate_nonce_req_p_nonce_length)))))));
+	bool tmp_result = (((
+		((zcbor_uint32_put(state, (48)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_generate_nonce_req_p_handle)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_generate_nonce_req_p_nonce)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_aead_generate_nonce_req_nonce_size)))) &&
+		((zcbor_uint32_encode(state,
+				      (&(*input).psa_aead_generate_nonce_req_p_nonce_length)))))));
 
 	if (!tmp_result) {
 		zcbor_trace_file(state);
@@ -1266,21 +1254,19 @@ static bool encode_psa_asymmetric_encrypt_req(zcbor_state_t *state,
 {
 	zcbor_log("%s\r\n", __func__);
 
-	bool tmp_result = ((
-		(((zcbor_uint32_put(state, (60)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_key)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_alg)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_p_input)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_asymmetric_encrypt_req_input_length)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_p_salt)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_asymmetric_encrypt_req_salt_length)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_p_output)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_asymmetric_encrypt_req_output_size)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_asymmetric_encrypt_req_p_output_length)))))));
+	bool tmp_result = (((
+		((zcbor_uint32_put(state, (60)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_key)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_alg)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_p_input)))) &&
+		((zcbor_uint32_encode(state,
+				      (&(*input).psa_asymmetric_encrypt_req_input_length)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_p_salt)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_salt_length)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_p_output)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_encrypt_req_output_size)))) &&
+		((zcbor_uint32_encode(state,
+				      (&(*input).psa_asymmetric_encrypt_req_p_output_length)))))));
 
 	if (!tmp_result) {
 		zcbor_trace_file(state);
@@ -1297,21 +1283,19 @@ static bool encode_psa_asymmetric_decrypt_req(zcbor_state_t *state,
 {
 	zcbor_log("%s\r\n", __func__);
 
-	bool tmp_result = ((
-		(((zcbor_uint32_put(state, (61)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_key)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_alg)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_p_input)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_asymmetric_decrypt_req_input_length)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_p_salt)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_asymmetric_decrypt_req_salt_length)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_p_output)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_asymmetric_decrypt_req_output_size)))) &&
-		 ((zcbor_uint32_encode(state,
-				       (&(*input).psa_asymmetric_decrypt_req_p_output_length)))))));
+	bool tmp_result = (((
+		((zcbor_uint32_put(state, (61)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_key)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_alg)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_p_input)))) &&
+		((zcbor_uint32_encode(state,
+				      (&(*input).psa_asymmetric_decrypt_req_input_length)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_p_salt)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_salt_length)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_p_output)))) &&
+		((zcbor_uint32_encode(state, (&(*input).psa_asymmetric_decrypt_req_output_size)))) &&
+		((zcbor_uint32_encode(state,
+				      (&(*input).psa_asymmetric_decrypt_req_p_output_length)))))));
 
 	if (!tmp_result) {
 		zcbor_trace_file(state);
@@ -1628,99 +1612,12 @@ static bool encode_psa_generate_key_req(zcbor_state_t *state,
 	return tmp_result;
 }
 
-static bool encode_psa_sign_hash_start_req(zcbor_state_t *state,
-					   const struct psa_sign_hash_start_req *input)
-{
-	zcbor_log("%s\r\n", __func__);
-
-	bool tmp_result = ((
-		(((zcbor_uint32_put(state, (75)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_sign_hash_start_req_p_operation)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_sign_hash_start_req_key)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_sign_hash_start_req_alg)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_sign_hash_start_req_p_hash)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_sign_hash_start_req_hash_length)))))));
-
-	if (!tmp_result) {
-		zcbor_trace_file(state);
-		zcbor_log("%s error: %s\r\n", __func__, zcbor_error_str(zcbor_peek_error(state)));
-	} else {
-		zcbor_log("%s success\r\n", __func__);
-	}
-
-	return tmp_result;
-}
-
-static bool encode_psa_sign_hash_abort_req(zcbor_state_t *state,
-					   const struct psa_sign_hash_abort_req *input)
-{
-	zcbor_log("%s\r\n", __func__);
-
-	bool tmp_result = ((
-		(((zcbor_uint32_put(state, (76)))) &&
-		 ((zcbor_uint32_encode(state, (&(*input).psa_sign_hash_abort_req_p_operation)))))));
-
-	if (!tmp_result) {
-		zcbor_trace_file(state);
-		zcbor_log("%s error: %s\r\n", __func__, zcbor_error_str(zcbor_peek_error(state)));
-	} else {
-		zcbor_log("%s success\r\n", __func__);
-	}
-
-	return tmp_result;
-}
-
-static bool encode_psa_verify_hash_start_req(zcbor_state_t *state,
-					     const struct psa_verify_hash_start_req *input)
-{
-	zcbor_log("%s\r\n", __func__);
-
-	bool tmp_result = (((
-		((zcbor_uint32_put(state, (77)))) &&
-		((zcbor_uint32_encode(state, (&(*input).psa_verify_hash_start_req_p_operation)))) &&
-		((zcbor_uint32_encode(state, (&(*input).psa_verify_hash_start_req_key)))) &&
-		((zcbor_uint32_encode(state, (&(*input).psa_verify_hash_start_req_alg)))) &&
-		((zcbor_uint32_encode(state, (&(*input).psa_verify_hash_start_req_p_hash)))) &&
-		((zcbor_uint32_encode(state, (&(*input).psa_verify_hash_start_req_hash_length)))) &&
-		((zcbor_uint32_encode(state, (&(*input).psa_verify_hash_start_req_p_signature)))) &&
-		((zcbor_uint32_encode(state,
-				      (&(*input).psa_verify_hash_start_req_signature_length)))))));
-
-	if (!tmp_result) {
-		zcbor_trace_file(state);
-		zcbor_log("%s error: %s\r\n", __func__, zcbor_error_str(zcbor_peek_error(state)));
-	} else {
-		zcbor_log("%s success\r\n", __func__);
-	}
-
-	return tmp_result;
-}
-
-static bool encode_psa_verify_hash_abort_req(zcbor_state_t *state,
-					     const struct psa_verify_hash_abort_req *input)
-{
-	zcbor_log("%s\r\n", __func__);
-
-	bool tmp_result = (((((zcbor_uint32_put(state, (78)))) &&
-			     ((zcbor_uint32_encode(
-				     state, (&(*input).psa_verify_hash_abort_req_p_operation)))))));
-
-	if (!tmp_result) {
-		zcbor_trace_file(state);
-		zcbor_log("%s error: %s\r\n", __func__, zcbor_error_str(zcbor_peek_error(state)));
-	} else {
-		zcbor_log("%s success\r\n", __func__);
-	}
-
-	return tmp_result;
-}
-
 static bool encode_psa_pake_setup_req(zcbor_state_t *state, const struct psa_pake_setup_req *input)
 {
 	zcbor_log("%s\r\n", __func__);
 
 	bool tmp_result =
-		(((((zcbor_uint32_put(state, (79)))) &&
+		(((((zcbor_uint32_put(state, (75)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_setup_req_p_handle)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_setup_req_password_key)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_setup_req_p_cipher_suite)))))));
@@ -1741,7 +1638,7 @@ static bool encode_psa_pake_set_role_req(zcbor_state_t *state,
 	zcbor_log("%s\r\n", __func__);
 
 	bool tmp_result =
-		(((((zcbor_uint32_put(state, (80)))) &&
+		(((((zcbor_uint32_put(state, (76)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_set_role_req_p_handle)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_set_role_req_role)))))));
 
@@ -1761,7 +1658,7 @@ static bool encode_psa_pake_set_user_req(zcbor_state_t *state,
 	zcbor_log("%s\r\n", __func__);
 
 	bool tmp_result =
-		(((((zcbor_uint32_put(state, (81)))) &&
+		(((((zcbor_uint32_put(state, (77)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_set_user_req_p_handle)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_set_user_req_p_user_id)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_set_user_req_user_id_len)))))));
@@ -1782,7 +1679,7 @@ static bool encode_psa_pake_set_peer_req(zcbor_state_t *state,
 	zcbor_log("%s\r\n", __func__);
 
 	bool tmp_result =
-		(((((zcbor_uint32_put(state, (82)))) &&
+		(((((zcbor_uint32_put(state, (78)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_set_peer_req_p_handle)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_set_peer_req_p_peer_id)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_set_peer_req_peer_id_len)))))));
@@ -1803,7 +1700,7 @@ static bool encode_psa_pake_set_context_req(zcbor_state_t *state,
 	zcbor_log("%s\r\n", __func__);
 
 	bool tmp_result = (((
-		((zcbor_uint32_put(state, (83)))) &&
+		((zcbor_uint32_put(state, (79)))) &&
 		((zcbor_uint32_encode(state, (&(*input).psa_pake_set_context_req_p_handle)))) &&
 		((zcbor_uint32_encode(state, (&(*input).psa_pake_set_context_req_p_context)))) &&
 		((zcbor_uint32_encode(state, (&(*input).psa_pake_set_context_req_context_len)))))));
@@ -1824,7 +1721,7 @@ static bool encode_psa_pake_output_req(zcbor_state_t *state,
 	zcbor_log("%s\r\n", __func__);
 
 	bool tmp_result = ((
-		(((zcbor_uint32_put(state, (84)))) &&
+		(((zcbor_uint32_put(state, (80)))) &&
 		 ((zcbor_uint32_encode(state, (&(*input).psa_pake_output_req_p_handle)))) &&
 		 ((zcbor_uint32_encode(state, (&(*input).psa_pake_output_req_step)))) &&
 		 ((zcbor_uint32_encode(state, (&(*input).psa_pake_output_req_p_output)))) &&
@@ -1846,7 +1743,7 @@ static bool encode_psa_pake_input_req(zcbor_state_t *state, const struct psa_pak
 	zcbor_log("%s\r\n", __func__);
 
 	bool tmp_result =
-		(((((zcbor_uint32_put(state, (85)))) &&
+		(((((zcbor_uint32_put(state, (81)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_input_req_p_handle)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_input_req_step)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_input_req_p_input)))) &&
@@ -1868,7 +1765,7 @@ static bool encode_psa_pake_get_shared_key_req(zcbor_state_t *state,
 	zcbor_log("%s\r\n", __func__);
 
 	bool tmp_result = ((
-		(((zcbor_uint32_put(state, (86)))) &&
+		(((zcbor_uint32_put(state, (82)))) &&
 		 ((zcbor_uint32_encode(state, (&(*input).psa_pake_get_shared_key_req_p_handle)))) &&
 		 ((zcbor_uint32_encode(state,
 				       (&(*input).psa_pake_get_shared_key_req_p_attributes)))) &&
@@ -1889,7 +1786,7 @@ static bool encode_psa_pake_abort_req(zcbor_state_t *state, const struct psa_pak
 	zcbor_log("%s\r\n", __func__);
 
 	bool tmp_result =
-		(((((zcbor_uint32_put(state, (87)))) &&
+		(((((zcbor_uint32_put(state, (83)))) &&
 		   ((zcbor_uint32_encode(state, (&(*input).psa_pake_abort_req_p_handle)))))));
 
 	if (!tmp_result) {
@@ -1991,10 +1888,6 @@ static bool encode_psa_crypto_req(zcbor_state_t *state, const struct psa_crypto_
 	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_raw_key_agreement_req_m_c) ? ((encode_psa_raw_key_agreement_req(state, (&(*input).psa_crypto_req_msg_psa_raw_key_agreement_req_m))))
 	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_generate_random_req_m_c) ? ((encode_psa_generate_random_req(state, (&(*input).psa_crypto_req_msg_psa_generate_random_req_m))))
 	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_generate_key_req_m_c) ? ((encode_psa_generate_key_req(state, (&(*input).psa_crypto_req_msg_psa_generate_key_req_m))))
-	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_sign_hash_start_req_m_c) ? ((encode_psa_sign_hash_start_req(state, (&(*input).psa_crypto_req_msg_psa_sign_hash_start_req_m))))
-	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_sign_hash_abort_req_m_c) ? ((encode_psa_sign_hash_abort_req(state, (&(*input).psa_crypto_req_msg_psa_sign_hash_abort_req_m))))
-	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_verify_hash_start_req_m_c) ? ((encode_psa_verify_hash_start_req(state, (&(*input).psa_crypto_req_msg_psa_verify_hash_start_req_m))))
-	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_verify_hash_abort_req_m_c) ? ((encode_psa_verify_hash_abort_req(state, (&(*input).psa_crypto_req_msg_psa_verify_hash_abort_req_m))))
 	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_pake_setup_req_m_c) ? ((encode_psa_pake_setup_req(state, (&(*input).psa_crypto_req_msg_psa_pake_setup_req_m))))
 	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_pake_set_role_req_m_c) ? ((encode_psa_pake_set_role_req(state, (&(*input).psa_crypto_req_msg_psa_pake_set_role_req_m))))
 	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_pake_set_user_req_m_c) ? ((encode_psa_pake_set_user_req(state, (&(*input).psa_crypto_req_msg_psa_pake_set_user_req_m))))
@@ -2004,7 +1897,7 @@ static bool encode_psa_crypto_req(zcbor_state_t *state, const struct psa_crypto_
 	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_pake_input_req_m_c) ? ((encode_psa_pake_input_req(state, (&(*input).psa_crypto_req_msg_psa_pake_input_req_m))))
 	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_pake_get_shared_key_req_m_c) ? ((encode_psa_pake_get_shared_key_req(state, (&(*input).psa_crypto_req_msg_psa_pake_get_shared_key_req_m))))
 	: (((*input).psa_crypto_req_msg_choice == psa_crypto_req_msg_psa_pake_abort_req_m_c) ? ((encode_psa_pake_abort_req(state, (&(*input).psa_crypto_req_msg_psa_pake_abort_req_m))))
-	: false)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) || (zcbor_list_map_end_force_encode(state), false)) && zcbor_list_end_encode(state, 12))));
+	: false)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) || (zcbor_list_map_end_force_encode(state), false)) && zcbor_list_end_encode(state, 12))));
 
 	if (!tmp_result) {
 		zcbor_trace_file(state);
