@@ -256,6 +256,46 @@ static suit_plat_err_t used_storage(void *ctx, size_t *size)
 	return SUIT_PLAT_ERR_UNSUPPORTED;
 }
 
+
+static uint8_t m_TEMPORARY_kek_key[] = {
+0xf8, 0xfa, 0x8e, 0x7b, 0xed, 0x32, 0xd0, 0xc7, 0x15, 0x1f, 0xd9, 0xab, 0x0d, 0x8d, 0xed, 0x95,
+0x26, 0xa8, 0x6a, 0x15, 0x34, 0x16, 0x01, 0xcf, 0x9c, 0x6b, 0xba, 0x00, 0x6a, 0xab, 0xaa, 0x9a,
+};
+
+static suit_plat_err_t TEMPORARY_import_kek(psa_key_id_t *kek_key_id)
+{
+	psa_status_t status;
+
+	static mbedtls_svc_key_id_t key_id = {0};
+
+	if (key_id.MBEDTLS_PRIVATE(key_id) != 0) {
+		*kek_key_id = key_id.MBEDTLS_PRIVATE(key_id);
+		return SUIT_PLAT_SUCCESS;
+	}
+
+	/* Configure the key attributes */
+	psa_key_attributes_t key_attributes = PSA_KEY_ATTRIBUTES_INIT;
+
+	psa_set_key_usage_flags(&key_attributes, PSA_KEY_USAGE_ENCRYPT | PSA_KEY_USAGE_DECRYPT);
+	psa_set_key_lifetime(&key_attributes, PSA_KEY_LIFETIME_VOLATILE);
+	psa_set_key_algorithm(&key_attributes, PSA_ALG_ECB_NO_PADDING);
+	psa_set_key_type(&key_attributes, PSA_KEY_TYPE_AES);
+	psa_set_key_bits(&key_attributes, 256);
+
+	status = psa_import_key(&key_attributes,
+                            m_TEMPORARY_kek_key,
+                            sizeof(m_TEMPORARY_kek_key),
+                            &key_id);
+
+	if (status != PSA_SUCCESS) {
+		LOG_INF("psa_import failed for TEMPORARY key! (Error: %d)", status);
+		return SUIT_PLAT_ERR_CRASH;
+	}
+
+	*kek_key_id = key_id.MBEDTLS_PRIVATE(key_id);
+	return SUIT_PLAT_SUCCESS;
+}
+
 static suit_plat_err_t unwrap_cek(enum suit_cose_alg kw_alg_id,
 				  union suit_key_encryption_data kw_key, mbedtls_svc_key_id_t *cek_key_id)
 {
@@ -263,14 +303,16 @@ static suit_plat_err_t unwrap_cek(enum suit_cose_alg kw_alg_id,
 #ifdef CONFIG_SUIT_AES_KW_MANUAL
 	case suit_cose_aes256_kw:
 		psa_key_id_t kek_key_id;
-		if (suit_plat_decode_key_id(&kw_key.aes.key_id, &kek_key_id) != SUIT_PLAT_SUCCESS) {
+		if (suit_plat_decode_key_id(&kw_key.aes.key_id, &kek_key_id)
+				!= SUIT_PLAT_SUCCESS) {
 			return SUIT_PLAT_ERR_INVAL;
 		}
 
+		TEMPORARY_import_kek(&kek_key_id); /* VERY TEMPORARY - for tests! */
 		/* TODO proper key unwrap algorithm from PSA */
-		if (suit_aes_key_unwrap_manual(kek_key_id, kw_key.aes.ciphertext.value, 256,
-					       PSA_KEY_TYPE_AES, PSA_ALG_GCM,
-					       cek_key_id) != PSA_SUCCESS) {
+		if (suit_aes_key_unwrap_manual(kek_key_id, kw_key.aes.ciphertext.value,
+				  256, PSA_KEY_TYPE_AES, PSA_ALG_GCM, cek_key_id)
+				!= PSA_SUCCESS) {
 			LOG_ERR("Failed to unwrap the CEK");
 			return SUIT_PLAT_ERR_AUTHENTICATION;
 		}
