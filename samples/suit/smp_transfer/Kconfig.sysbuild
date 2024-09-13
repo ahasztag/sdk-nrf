@@ -1,0 +1,23 @@
+
+source "${ZEPHYR_BASE}/share/sysbuild/Kconfig"
+
+if SUIT_BUILD_RECOVERY
+
+choice SUIT_RECOVERY_APPLICATION
+	prompt "Select SUIT recovery application"
+	# default SUIT_RECOVERY_APPLICATION_DEFAULT
+
+config SUIT_RECOVERY_APPLICATION_APPCORE
+	bool "Use the appcore recovery application"
+	help
+	  Use the sample appcore recovery application.
+
+endchoice
+
+config SUIT_RECOVERY_APPLICATION_PATH
+	string
+	default "${ZEPHYR_NRF_MODULE_DIR}/samples/suit/recovery_appcore" if SUIT_RECOVERY_APPLICATION_APPCORE
+	help
+	  Source directory of the SUIT recovery appcore only application.
+
+endif # SUIT_BUILD_RECOVERY
