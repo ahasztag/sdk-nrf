@@ -13,6 +13,7 @@ int main(void)
 	while (true)
 	{
 		test++;
+		printk("test: %d\n", test);
 	}
 	return 0;
 }
