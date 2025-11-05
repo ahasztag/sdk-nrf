@@ -426,7 +426,7 @@ list(APPEND prefixed_images ":${dynamic_partition}")
 list(APPEND input_files  ${${DEFAULT_IMAGE}_input_files})
 list(APPEND header_files ${${DEFAULT_IMAGE}_binary_dir}/${generated_path}/pm_config.h)
 
-if(SB_CONFIG_SECURE_BOOT_BUILD_S1_VARIANT_IMAGE)
+if(SB_CONFIG_SECURE_BOOT_BUILD_S1_VARIANT_IMAGE AND NOT SB_CONFIG_BOOTLOADER_MCUBOOT_ONLY_IMAGES)
   sysbuild_get(s1_image_binary_dir  IMAGE s1_image VAR ZEPHYR_BINARY_DIR CACHE)
   list(APPEND prefixed_images ":s1_image")
   list(APPEND header_files ${s1_image_binary_dir}/${generated_path}/pm_config.h)

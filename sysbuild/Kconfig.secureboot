@@ -10,6 +10,14 @@ config SECURE_BOOT
 	  This option will be set if the first stage bootloader which verifies the signature of the
 	  application is enabled for one or multiple cores.
 
+if SECURE_BOOT
+
+config SECURE_BOOT_ONLY_IMAGES
+	bool "Build images with secure boot support but not the bootloader itself"
+	default y if BOOTLOADER_MCUBOOT_ONLY_IMAGES
+
+endif
+
 menuconfig SECURE_BOOT_APPCORE
 	bool "Appcore"
 	select SECURE_BOOT

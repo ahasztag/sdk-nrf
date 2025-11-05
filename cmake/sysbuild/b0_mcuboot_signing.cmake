@@ -137,7 +137,7 @@ function(ncs_secure_boot_mcuboot_sign application bin_files signed_targets prefi
   endif()
 endfunction()
 
-if(SB_CONFIG_BOOTLOADER_MCUBOOT)
+if(SB_CONFIG_BOOTLOADER_MCUBOOT AND NOT SB_CONFIG_BOOTLOADER_MCUBOOT_ONLY_IMAGES)
   if(SB_CONFIG_SECURE_BOOT_APPCORE)
     set(bin_files)
     set(signed_targets)

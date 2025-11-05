@@ -5,7 +5,7 @@
 
 get_property(PM_DOMAINS GLOBAL PROPERTY PM_DOMAINS)
 if(SB_CONFIG_SECURE_BOOT)
-  if(SB_CONFIG_SECURE_BOOT_NETCORE)
+  if(SB_CONFIG_SECURE_BOOT_NETCORE AND NOT SB_CONFIG_SECURE_BOOT_ONLY_IMAGES)
     # Calculate the network board target
     string(REPLACE "/" ";" split_board_qualifiers "${BOARD_QUALIFIERS}")
     list(GET split_board_qualifiers 1 target_soc)
@@ -38,7 +38,11 @@ if(SB_CONFIG_SECURE_BOOT)
     )
   endif()
 
-  if(SB_CONFIG_SECURE_BOOT_APPCORE)
+  if(SB_CONFIG_SECURE_BOOT_NETCORE AND SB_CONFIG_SECURE_BOOT_ONLY_IMAGES)
+    add_custom_target(b0n GLOBAL)
+  endif()
+
+  if(SB_CONFIG_SECURE_BOOT_APPCORE AND NOT SB_CONFIG_SECURE_BOOT_ONLY_IMAGES)
     set(secure_boot_source_dir ${ZEPHYR_NRF_MODULE_DIR}/samples/bootloader)
 
     ExternalZephyrProject_Add(
@@ -59,11 +63,19 @@ if(SB_CONFIG_SECURE_BOOT)
     )
   endif()
 
+  if(SB_CONFIG_SECURE_BOOT_APPCORE AND SB_CONFIG_SECURE_BOOT_ONLY_IMAGES)
+    add_custom_target(b0 GLOBAL)
+  endif()
+
   if(SB_CONFIG_SECURE_BOOT_BUILD_S1_VARIANT_IMAGE)
     set(image s1_image)
 
     if(SB_CONFIG_BOOTLOADER_MCUBOOT)
-      ExternalNcsVariantProject_Add(APPLICATION mcuboot VARIANT ${image})
+      if(NOT SB_CONFIG_BOOTLOADER_MCUBOOT_ONLY_IMAGES)
+        ExternalNcsVariantProject_Add(APPLICATION mcuboot VARIANT ${image})
+      else()
+        add_custom_target(${image} GLOBAL)
+      endif()
     else()
       ExternalNcsVariantProject_Add(APPLICATION ${DEFAULT_IMAGE} VARIANT ${image})
     endif()
