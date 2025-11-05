@@ -248,8 +248,10 @@ function(partition_manager)
       string(REPLACE " " ";" PM_${PART}_SPAN ${PM_${PART}_SPAN})
       list(APPEND containers ${part})
     endif()
+    # list(FILTER filtered_images EXCLUDE "mcuboot")
 
     # Include the partition in the merge operation if it has a hex file.
+    # if(${part} IN_LIST filtered_images)
     if(${part} IN_LIST IMAGES)
       # Question, what is it we want to know ?
       # We are now in sysbuild, meaning we know everything.
