@@ -336,8 +336,6 @@ function(dfu_app_zip_package)
   endif()
 
   if(bin_files)
-    sysbuild_get(mcuboot_fw_info_firmware_version IMAGE mcuboot VAR CONFIG_FW_INFO_FIRMWARE_VERSION KCONFIG)
-
     include(${ZEPHYR_NRF_MODULE_DIR}/cmake/fw_zip.cmake)
 
     generate_dfu_zip(

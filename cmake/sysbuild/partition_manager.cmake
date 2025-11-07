@@ -611,7 +611,7 @@ if(ext_flash_enabled)
 endif()
 
 if(SB_CONFIG_BOOTLOADER_MCUBOOT)
-  sysbuild_get(ram_flash_enabled IMAGE mcuboot VAR CONFIG_FLASH_SIMULATOR KCONFIG)
+  set(ram_flash_enabled SB_CONFIG_MCUBOOT_NRF53_MULTI_IMAGE_UPDATE)
 
   # If simultaneous updates of the network core and application core is supported
   # we add a region which is used to emulate flash. In reality this data is being

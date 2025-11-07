@@ -137,7 +137,7 @@ function(${SYSBUILD_CURRENT_MODULE_NAME}_pre_cmake)
     endif()
   endif()
 
-  if(SB_CONFIG_BOOTLOADER_MCUBOOT)
+  if(SB_CONFIG_BOOTLOADER_MCUBOOT AND NOT SB_CONFIG_BOOTLOADER_MCUBOOT_ONLY_IMAGES)
     include(${ZEPHYR_NRF_MODULE_DIR}/sysbuild/image_configurations/mcuboot_image_default.cmake) #TEMP
   endif()
 
@@ -182,9 +182,13 @@ function(${SYSBUILD_CURRENT_MODULE_NAME}_pre_cmake)
         string(APPEND dfu_slots_output_text "   * ${current_output_name}: ${value}\n")
       endif()
 
-      foreach(image mcuboot;${updateable_images})
+      foreach(image ${updateable_images})
         set_config_int(${image} ${current_application_kconfig} ${value})
       endforeach()
+
+      if(NOT SB_CONFIG_BOOTLOADER_MCUBOOT_ONLY_IMAGES)
+        set_config_int(mcuboot ${current_application_kconfig} ${value})
+      endif()
 
       set(${current_cache_name} ${value} CACHE INTERNAL "" FORCE)
     endforeach()
@@ -208,9 +212,13 @@ function(${SYSBUILD_CURRENT_MODULE_NAME}_pre_cmake)
           string(APPEND dfu_slots_output_text "   * ${current_output_name}: ${value}\n")
         endif()
 
-        foreach(image mcuboot;${updateable_images})
+        foreach(image ${updateable_images})
           set_config_int(${image} ${current_application_kconfig} ${value})
         endforeach()
+
+        if(NOT SB_CONFIG_BOOTLOADER_MCUBOOT_ONLY_IMAGES)
+          set_config_int(mcuboot ${current_application_kconfig} ${value})
+        endif()
 
         set(${current_cache_name} ${value} CACHE INTERNAL "" FORCE)
       endforeach()
