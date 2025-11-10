@@ -66,21 +66,14 @@ function(provision application prefix_name)
       set(partition_manager_target partition_manager_CPUNET)
       set(s0_arg --s0-addr $<TARGET_PROPERTY:${partition_manager_target},PM_APP_ADDRESS>)
       set(s1_arg)
-      set(cpunet_target y)
     else()
       set(partition_manager_target partition_manager)
       set(s0_arg --s0-addr $<TARGET_PROPERTY:${partition_manager_target},PM_S0_ADDRESS>)
       set(s1_arg --s1-addr $<TARGET_PROPERTY:${partition_manager_target},PM_S1_ADDRESS>)
-      set(cpunet_target n)
     endif()
 
     if(SB_CONFIG_SECURE_BOOT_DEBUG_NO_VERIFY_HASHES)
       set(no_verify_hashes_arg --no-verify-hashes)
-    endif()
-
-    b0_sign_image(${application} ${cpunet_target})
-    if(NOT (CONFIG_SOC_NRF5340_CPUNET OR "${domain}" STREQUAL "CPUNET") AND SB_CONFIG_SECURE_BOOT_BUILD_S1_VARIANT_IMAGE)
-      b0_sign_image("s1_image" n)
     endif()
   endif()
 
@@ -173,21 +166,53 @@ function(provision application prefix_name)
   endif()
 endfunction()
 
-if(NCS_SYSBUILD_PARTITION_MANAGER)
-  b0_gen_keys()
 
+if(SB_CONFIG_SECURE_BOOT)
+  b0_gen_keys()
+endif()
+
+# Sign images
+
+if(SB_CONFIG_SECURE_BOOT AND SB_CONFIG_SECURE_BOOT_APPCORE)
+  if(SB_CONFIG_BOOTLOADER_MCUBOOT AND NOT SB_CONFIG_BOOTLOADER_MCUBOOT_ONLY_IMAGES)
+    b0_sign_image("mcuboot" n)
+    if(SB_CONFIG_SECURE_BOOT_BUILD_S1_VARIANT_IMAGE)
+      b0_sign_image("s1_image" n)
+    endif()
+  elseif(NOT SB_CONFIG_BOOTLOADER_MCUBOOT)
+    b0_sign_image("${DEFAULT_IMAGE}" n)
+    if(SB_CONFIG_SECURE_BOOT_BUILD_S1_VARIANT_IMAGE)
+      b0_sign_image("s1_image" n)
+    endif()
+  endif()
+endif()
+
+if(SB_CONFIG_SECURE_BOOT_NETCORE)
+  get_property(main_app GLOBAL PROPERTY DOMAIN_APP_CPUNET)
+
+  if(NOT main_app)
+    message(FATAL_ERROR "Secure boot is enabled on domain CPUNET"
+                        " but no image is selected for this domain.")
+  endif()
+
+  b0_sign_image("${main_app}" y)
+endif()
+
+# Prepare the provision hex file
+
+if(NCS_SYSBUILD_PARTITION_MANAGER)
   # Get the main app of the domain that secure boot should handle.
-  if(SB_CONFIG_SECURE_BOOT AND SB_CONFIG_SECURE_BOOT_APPCORE)
+  if(SB_CONFIG_SECURE_BOOT AND SB_CONFIG_SECURE_BOOT_APPCORE AND NOT SB_CONFIG_SECURE_BOOT_ONLY_IMAGES)
     if(SB_CONFIG_BOOTLOADER_MCUBOOT)
       provision("mcuboot" "app_")
     else()
       provision("${DEFAULT_IMAGE}" "app_")
     endif()
-  elseif(SB_CONFIG_MCUBOOT_HARDWARE_DOWNGRADE_PREVENTION)
+  elseif(SB_CONFIG_MCUBOOT_HARDWARE_DOWNGRADE_PREVENTION AND NOT SB_CONFIG_BOOTLOADER_MCUBOOT_ONLY_IMAGES)
     provision("${DEFAULT_IMAGE}" "app_")
   endif()
 
-  if(SB_CONFIG_SECURE_BOOT_NETCORE)
+  if(SB_CONFIG_SECURE_BOOT_NETCORE AND NOT SB_CONFIG_SECURE_BOOT_ONLY_IMAGES)
     get_property(main_app GLOBAL PROPERTY DOMAIN_APP_CPUNET)
 
     if(NOT main_app)
