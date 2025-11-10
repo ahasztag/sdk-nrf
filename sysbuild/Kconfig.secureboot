@@ -10,6 +10,14 @@ config SECURE_BOOT
 	  This option will be set if the first stage bootloader which verifies the signature of the
 	  application is enabled for one or multiple cores.
 
+if SECURE_BOOT
+
+config SECURE_BOOT_ONLY_IMAGES
+	bool "Build images for b0/b0n support, but not B0/B0n itself"
+	default y if BOOTLOADER_MCUBOOT_ONLY_IMAGES
+
+endif # SECURE_BOOT
+
 menuconfig SECURE_BOOT_APPCORE
 	bool "Appcore"
 	select SECURE_BOOT
@@ -116,6 +124,10 @@ menuconfig SECURE_BOOT_NETCORE
 	  Enable first stage bootloader for network core.
 
 if SECURE_BOOT_NETCORE
+
+config SECURE_BOOT_NETCORE_ONLY_IMAGES
+	bool "Build images for b0n support, but not B0 itself"
+	default y if BOOTLOADER_MCUBOOT_ONLY_IMAGES
 
 config SECURE_BOOT_NETCORE_SUPPORTED_HASH_SOFTWARE
 	bool

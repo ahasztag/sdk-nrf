@@ -4,7 +4,10 @@
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
 
-if(SB_CONFIG_BOOTLOADER_MCUBOOT)
+# SB_CONFIG_BOOTLOADER_MCUBOOT_ONLY_IMAGES is only supported with partition manager
+# static configuration or DTS. CONFIG_NCS_MCUBOOT_IN_BUILD is only used for dynamic
+# partition manager configuration, so no need to set it for static configuration.
+if(SB_CONFIG_BOOTLOADER_MCUBOOT AND NOT SB_CONFIG_BOOTLOADER_MCUBOOT_ONLY_IMAGES)
   get_target_property(mcuboot_board mcuboot BOARD)
 
   if(((NOT ${ZCMAKE_APPLICATION}_BOARD) AND (NOT mcuboot_board)) OR
