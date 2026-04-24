@@ -1026,11 +1026,13 @@ static uint8_t rep_notify_process(struct bt_conn *conn,
 		LOG_WRN("Data size too big, truncating");
 		length = UINT8_MAX;
 	}
+
 	/* Zephyr uses the callback with data set to NULL to inform about the
 	 * subscription removal. Do not update the report size in that case.
 	 */
-	if (data != NULL) {
-		rep->size = (uint8_t)length;
+	if (data == NULL) {
+		rep->notify_cb = NULL;
+		return BT_GATT_ITER_CONTINUE;
 	}
 
 	return rep->notify_cb(rep->hogp, rep, 0, data);

@@ -457,7 +457,10 @@ Binary libraries
 Bluetooth libraries and services
 --------------------------------
 
-|no_changes_yet_note|
+* :ref:`hogp_readme` library:
+
+  * Fixed an issue where the :c:func:`bt_hogp_rep_unsubscribe` function did not clear the notification callback, which prevented the :c:func:`bt_hogp_rep_subscribe` function from succeeding after unsubscribing.
+    Also, the notification callback is no longer called with NULL data when the subscription is removed.
 
 Common Application Framework
 ----------------------------
