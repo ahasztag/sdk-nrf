@@ -25,6 +25,15 @@ config ZMS
 config NVS
 	default y if !(SOC_FLASH_NRF_RRAM || SOC_FLASH_NRF_MRAM)
 
+config SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING
+	bool "Continuous report sending"
+	depends on BT_RADIO_NOTIFICATION_CONN_CB
+	depends on BT_ATT_SENT_CB_AFTER_TX
+	help
+	  Enable the continuous report sending feature in the peripheral HIDS sample.
+	  A designated button combination toggles continuous report sending on and off.
+	  Note: Only one central device can receive continuous reports at a time.
+
 endmenu
 
 source "Kconfig.zephyr"

@@ -32,6 +32,8 @@ Mouse clicks are not simulated.
 This sample exposes the HID GATT Service.
 It uses a report map for a generic mouse.
 
+.. _peripheral_hids_mouse_user_interface:
+
 User interface
 **************
 
@@ -55,6 +57,14 @@ User interface
       Button 4:
          Simulate moving the mouse pointer five pixels down.
 
+      Buttons 1 and 3 together:
+         Toggle continuous report sending when the :option:`CONFIG_SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING` Kconfig option is enabled (left + right pressed at the same time).
+         See :ref:`peripheral_hids_mouse_continuous_tx` for more details.
+
+         .. note::
+
+            Pressing buttons other than this combination is ignored until the continuous report sending is turned off.
+
    .. group-tab:: nRF54 DKs
 
       Button 0:
@@ -72,6 +82,14 @@ User interface
 
       Button 3:
          Simulate moving the mouse pointer five pixels down.
+
+      Buttons 0 and 2 together:
+         Toggle continuous report sending when the :option:`CONFIG_SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING` Kconfig option is enabled (left + right pressed at the same time).
+         See :ref:`peripheral_hids_mouse_continuous_tx` for more details.
+
+         .. note::
+
+            Pressing buttons other than this combination is ignored until the continuous report sending is turned off.
 
 Configuration
 *************
@@ -117,6 +135,19 @@ Because of that it is not recommended for production.
 
 .. note::
    If MITM protection based on passkey display is enabled (:option:`CONFIG_SAMPLE_BT_HIDS_SECURITY_MITM`) and you want to pair the device with a computer running MacOS, set the :kconfig:option:`CONFIG_BT_HIDS_DEFAULT_PERM_RW_AUTHEN` Kconfig option to ``y``.
+
+.. _peripheral_hids_mouse_continuous_tx:
+
+Continuous report sending
+-------------------------
+
+The :option:`CONFIG_SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING` Kconfig option enables sending HID movement notifications at roughly one for each connection interval, timed with the SoftDevice Controller radio notification API (:kconfig:option:`CONFIG_BT_RADIO_NOTIFICATION_CONN_CB`).
+See the :ref:`peripheral_hids_mouse_user_interface` section for how to toggle the feature on or off.
+If continuous report sending is enabled, any button press other than the designated button combination does not send mouse movement to the host until the continuous report sending is turned off.
+
+.. include:: ../peripheral_hids_keyboard/README.rst
+   :start-after: .. peripheral-hids-continuous-report-sending-shared-start
+   :end-before: .. peripheral-hids-continuous-report-sending-shared-end
 
 Bluetooth direct advertising
 ----------------------------

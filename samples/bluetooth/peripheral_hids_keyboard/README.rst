@@ -62,6 +62,8 @@ After connecting, the sample application behaves in the same way as the original
 Reading the NFC tag again when the application is in a connected state causes disconnection.
 When the connection is lost, advertising does not restart automatically.
 
+.. _peripheral_hids_keyboard_user_interface:
+
 User interface
 **************
 
@@ -96,6 +98,14 @@ User interface
       LED 4:
          Indicates if an NFC field is present.
 
+      Buttons 1 and 3 together:
+         Toggle continuous report sending when the :option:`CONFIG_SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING` Kconfig option is enabled (letter/passkey-confirm button and third physical button pressed at the same time).
+         See :ref:`peripheral_hids_keyboard_continuous_tx` for more details.
+
+         .. note::
+
+            Pressing buttons **1** and **2** is ignored until the continuous report sending is turned off.
+
    .. group-tab:: nRF54 DKs
 
       Button 0:
@@ -125,6 +135,14 @@ User interface
       LED 3:
          Indicates if an NFC field is present.
 
+      Buttons 0 and 2 together:
+         Toggle continuous report sending when the :option:`CONFIG_SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING` Kconfig option is enabled (letter/passkey-confirm button and third physical button pressed at the same time).
+         See :ref:`peripheral_hids_keyboard_continuous_tx` for more details.
+
+         .. note::
+
+            Pressing buttons **0** and **1** is ignored until the continuous report sending is turned off.
+
 Configuration
 *************
 
@@ -137,6 +155,26 @@ The following sample-specific Kconfig options are used in this sample (defined i
 
 .. options-from-kconfig::
    :show-type:
+
+.. _peripheral_hids_keyboard_continuous_tx:
+
+Continuous report sending
+-------------------------
+
+The :option:`CONFIG_SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING` Kconfig option enables sending HID keyboard input notifications at roughly one for each connection interval, timed with the SoftDevice Controller radio notification API (:kconfig:option:`CONFIG_BT_RADIO_NOTIFICATION_CONN_CB`).
+See the :ref:`peripheral_hids_keyboard_user_interface` section for how to toggle the feature on or off.
+If continuous report sending is enabled, any button press other than the designated button combination does not send key presses to the host until the continuous report sending is turned off.
+
+.. peripheral-hids-continuous-report-sending-shared-start
+
+The feature is not supported in the Boot Protocol mode.
+If more than one central is connected, only one central is targeted for this traffic.
+Which link is used is not specified - use a single connection for predictable measurements.
+
+For best results, only allow a single central connection (set both :kconfig:option:`CONFIG_BT_MAX_CONN` and :kconfig:option:`CONFIG_BT_HIDS_MAX_CLIENT_COUNT` to ``1``).
+Otherwise, more reports will be dropped or delayed due to other radio traffic, such as advertising events.
+
+.. peripheral-hids-continuous-report-sending-shared-end
 
 Setup
 =====
