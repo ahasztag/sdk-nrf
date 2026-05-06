@@ -44,6 +44,8 @@
  * The result should be the same like usine @ref KEY_CAPSLOCK_MASK
  */
 #define KEY_CAPSLOCK_RSP_MASK DK_BTN3_MSK
+/** Toggle HID input report CCC subscriptions (DK Button 4). */
+#define KEY_REP_SUB_TOGGLE_MASK DK_BTN4_MSK
 
 /* Key used to accept or reject passkey value */
 #define KEY_PAIRING_ACCEPT DK_BTN1_MSK
@@ -53,6 +55,7 @@ static struct bt_conn *default_conn;
 static struct bt_hogp hogp;
 static struct bt_conn *auth_conn;
 static uint8_t capslock_state;
+static bool hogp_rep_subs_active;
 
 static void hids_on_ready(struct k_work *work);
 static K_WORK_DEFINE(hids_ready_work, hids_on_ready);
@@ -226,6 +229,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	if (bt_hogp_assign_check(&hogp)) {
 		printk("HIDS client active - releasing");
 		bt_hogp_release(&hogp);
+		hogp_rep_subs_active = false;
 	}
 
 	if (default_conn != conn) {
@@ -355,20 +359,16 @@ static void hogp_ready_cb(struct bt_hogp *hogp)
 	k_work_submit(&hids_ready_work);
 }
 
-static void hids_on_ready(struct k_work *work)
+static void hogp_subscribe_all_input_reports(void)
 {
 	int err;
 	struct bt_hogp_rep_info *rep = NULL;
 
-	printk("HIDS is ready to work\n");
-
 	while (NULL != (rep = bt_hogp_rep_next(&hogp, rep))) {
-		if (bt_hogp_rep_type(rep) ==
-		    BT_HIDS_REPORT_TYPE_INPUT) {
+		if (bt_hogp_rep_type(rep) == BT_HIDS_REPORT_TYPE_INPUT) {
 			printk("Subscribe to report id: %u\n",
 			       bt_hogp_rep_id(rep));
-			err = bt_hogp_rep_subscribe(&hogp, rep,
-							   hogp_notify_cb);
+			err = bt_hogp_rep_subscribe(&hogp, rep, hogp_notify_cb);
 			if (err) {
 				printk("Subscribe error (%d)\n", err);
 			}
@@ -376,22 +376,74 @@ static void hids_on_ready(struct k_work *work)
 	}
 	if (hogp.rep_boot.kbd_inp) {
 		printk("Subscribe to boot keyboard report\n");
-		err = bt_hogp_rep_subscribe(&hogp,
-						   hogp.rep_boot.kbd_inp,
-						   hogp_boot_kbd_report);
+		err = bt_hogp_rep_subscribe(&hogp, hogp.rep_boot.kbd_inp,
+					    hogp_boot_kbd_report);
 		if (err) {
 			printk("Subscribe error (%d)\n", err);
 		}
 	}
 	if (hogp.rep_boot.mouse_inp) {
 		printk("Subscribe to boot mouse report\n");
-		err = bt_hogp_rep_subscribe(&hogp,
-						   hogp.rep_boot.mouse_inp,
-						   hogp_boot_mouse_report);
+		err = bt_hogp_rep_subscribe(&hogp, hogp.rep_boot.mouse_inp,
+					    hogp_boot_mouse_report);
 		if (err) {
 			printk("Subscribe error (%d)\n", err);
 		}
 	}
+}
+
+static void hogp_unsubscribe_all_input_reports(void)
+{
+	int err;
+	struct bt_hogp_rep_info *rep = NULL;
+
+	while (NULL != (rep = bt_hogp_rep_next(&hogp, rep))) {
+		if (bt_hogp_rep_type(rep) == BT_HIDS_REPORT_TYPE_INPUT) {
+			err = bt_hogp_rep_unsubscribe(&hogp, rep);
+			if (err) {
+				printk("Unsubscribe report id %u error (%d)\n",
+				       bt_hogp_rep_id(rep), err);
+			}
+		}
+	}
+	if (hogp.rep_boot.kbd_inp) {
+		err = bt_hogp_rep_unsubscribe(&hogp, hogp.rep_boot.kbd_inp);
+		if (err) {
+			printk("Unsubscribe boot keyboard error (%d)\n", err);
+		}
+	}
+	if (hogp.rep_boot.mouse_inp) {
+		err = bt_hogp_rep_unsubscribe(&hogp, hogp.rep_boot.mouse_inp);
+		if (err) {
+			printk("Unsubscribe boot mouse error (%d)\n", err);
+		}
+	}
+}
+
+static void button_rep_subscription_toggle(void)
+{
+	if (!bt_hogp_ready_check(&hogp)) {
+		printk("HID device not ready\n");
+		return;
+	}
+
+	if (hogp_rep_subs_active) {
+		hogp_unsubscribe_all_input_reports();
+		hogp_rep_subs_active = false;
+		printk("HID input report notifications off\n");
+	} else {
+		hogp_subscribe_all_input_reports();
+		hogp_rep_subs_active = true;
+		printk("HID input report notifications on\n");
+	}
+}
+
+static void hids_on_ready(struct k_work *work)
+{
+	printk("HIDS is ready to work\n");
+
+	hogp_subscribe_all_input_reports();
+	hogp_rep_subs_active = true;
 }
 
 static void hogp_prep_fail_cb(struct bt_hogp *hogp, int err)
@@ -568,6 +620,9 @@ static void button_handler(uint32_t button_state, uint32_t has_changed)
 	}
 	if (button & KEY_CAPSLOCK_RSP_MASK) {
 		button_capslock_rsp();
+	}
+	if (button & KEY_REP_SUB_TOGGLE_MASK) {
+		button_rep_subscription_toggle();
 	}
 }
 
