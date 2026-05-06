@@ -45,6 +45,20 @@ If any boot reports are detected, the behavior depends on if they are boot mouse
       * If a boot mouse report is detected, the sample subscribes to it.
       * If a boot keyboard report is detected, the sample subscribes to its input report, and the sample functionality of changing the CAPSLOCK LED is enabled (**Button 0** and **Button 2**).
 
+Continuous report receiving
+===========================
+
+If the connected device sends HID input notifications fast enough, the sample automatically enables continuous report receiving.
+
+In that mode, the sample stops printing every notification payload on the UART.
+Instead of every 500 reports, it prints a short summary allowing to assess the quality of the communication.
+
+* Enter - After each group of 10 reports, if their time span is shorter than 50 times the connection interval, continuous mode turns on.
+* Exit - If no report is received for 500 milliseconds, continuous mode turns off and per-notification logging resumes.
+
+To test the continuous report receiving feature, run the :ref:`peripheral_hids_keyboard` sample with the :option:`CONFIG_SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING` Kconfig option enabled.
+After pairing, press the buttons **1** and **3** on the DK that is running the :ref:`peripheral_hids_keyboard` sample together to toggle continuous report receiving on and off.
+
 User interface
 **************
 

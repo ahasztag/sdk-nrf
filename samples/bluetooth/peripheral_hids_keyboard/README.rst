@@ -167,6 +167,8 @@ If continuous report sending is enabled, any button press other than the designa
 
 .. peripheral-hids-continuous-report-sending-shared-start
 
+To print interval statistics on the central side, run the :ref:`bluetooth_central_hids` sample against this peripheral.
+
 The feature is not supported in the Boot Protocol mode.
 If more than one central is connected, only one central is targeted for this traffic.
 Which link is used is not specified - use a single connection for predictable measurements.

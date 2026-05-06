@@ -49,14 +49,177 @@
 #define KEY_PAIRING_ACCEPT DK_BTN1_MSK
 #define KEY_PAIRING_REJECT DK_BTN2_MSK
 
+/**
+ * Entrance into continuous receive mode: after every
+ * CONT_REPORT_RX_ENTRANCE_SAMPLE_REPORTS notifications we measure how long that batch took;
+ * if it is shorter than CONT_REPORT_RX_ENTRANCE_MAX_SPAN_CONN_INTERVALS connection intervals,
+ * we enable continuous mode.
+ */
+#define CONT_REPORT_RX_ENTRANCE_SAMPLE_REPORTS 10
+#define CONT_REPORT_RX_ENTRANCE_MAX_SPAN_CONN_INTERVALS 50
+
+#define CONTINUOUS_REPORT_RECEIVING_ENTRANCE_THRESHOLD_US \
+	(cont_report_rx_interval_us * CONT_REPORT_RX_ENTRANCE_MAX_SPAN_CONN_INTERVALS)
+
+/**
+ * Exit from continuous receive mode: if no report is received for
+ * CONTINUOUS_REPORT_RECEIVING_EXIT_THRESHOLD_US microseconds,
+ * continuous rx mode will be automatically disabled.
+ */
+#define CONTINUOUS_REPORT_RECEIVING_EXIT_THRESHOLD_US 500000
+
+/** The statistics for the continuous report receiving mode will be printed every 500 reports. */
+#define CONTINUOUS_REPORT_RECEIVING_PRINT_INFO_RATE 500
+
+/**
+ * Reports are considered to be within the expected window if the difference between
+ * the report interval and the connection interval is less than this value.
+ * The sample tracks how many reports are received outside this expected time window,
+ * both above and below the threshold.
+ */
+#define CONTINUOUS_REPORT_RECEIVING_WINDOW_DELTA_US 200
+
+/** Stack for stats print thread (several printk lines per batch). */
+#define CONT_REPORT_RX_STATS_PRINT_STACK_SIZE 1024
+/*
+ * One cooperative priority level below the Bluetooth RX work queue priority
+ * (K_PRIO_COOP(CONFIG_BT_RX_PRIO); see Zephyr hci_core.c / CONFIG_BT_RX_PRIO).
+ * This is to ensure the notify path is favored over the stats print path.
+ */
+#define CONT_REPORT_RX_STATS_PRINT_PRIO \
+	K_PRIO_COOP(MIN(CONFIG_BT_RX_PRIO + 1, CONFIG_NUM_COOP_PRIORITIES - 1))
+
+/* Small bounded queue between notify path and the stats print thread. */
+#define CONT_REPORT_RX_STATS_MSGQ_MAX_MESSAGES 4U
+
 static struct bt_conn *default_conn;
 static struct bt_hogp hogp;
 static struct bt_conn *auth_conn;
 static uint8_t capslock_state;
 
+static atomic_t cont_report_rx_on = ATOMIC_INIT(0);
+static uint32_t cont_report_rx_previous_report_cycles;
+static uint32_t cont_report_rx_interval_us;
+static uint32_t cont_report_rx_max_interval_us;
+static uint32_t cont_report_rx_min_interval_us = UINT32_MAX;
+static uint32_t cont_report_rx_above_window_count;
+static uint32_t cont_report_rx_below_window_count;
+
+static uint32_t hogp_notify_batch_start_cycles;
+static uint32_t hogp_notify_cnt;
+
+struct cont_report_rx_data {
+	int notify_cnt;
+	uint32_t report_interval_us;
+	uint32_t total_time_us;
+	uint32_t max_interval_us;
+	uint32_t min_interval_us;
+	uint32_t above_window_count;
+	uint32_t below_window_count;
+};
+
 static void hids_on_ready(struct k_work *work);
 static K_WORK_DEFINE(hids_ready_work, hids_on_ready);
 
+static void cont_report_rx_timer_expire(struct k_timer *timer);
+K_TIMER_DEFINE(cont_report_rx_timer, cont_report_rx_timer_expire, NULL);
+
+K_THREAD_STACK_DEFINE(cont_report_rx_stats_print_stack,
+		      CONT_REPORT_RX_STATS_PRINT_STACK_SIZE);
+static struct k_thread cont_report_rx_stats_print_thread_data;
+
+static void cont_report_rx_data_reset(void)
+{
+	cont_report_rx_max_interval_us = 0;
+	cont_report_rx_min_interval_us = UINT32_MAX;
+	cont_report_rx_above_window_count = 0;
+	cont_report_rx_below_window_count = 0;
+
+	cont_report_rx_previous_report_cycles = 0;
+	hogp_notify_batch_start_cycles = 0;
+	hogp_notify_cnt = 0;
+}
+
+K_MSGQ_DEFINE(cont_report_rx_dataq, sizeof(struct cont_report_rx_data),
+	      CONT_REPORT_RX_STATS_MSGQ_MAX_MESSAGES, sizeof(uint32_t));
+
+static void cont_report_rx_stats_print_thread_fn(void *p1, void *p2, void *p3)
+{
+	struct cont_report_rx_data msg;
+	uint32_t avg_interval_us;
+
+	ARG_UNUSED(p1);
+	ARG_UNUSED(p2);
+	ARG_UNUSED(p3);
+
+	for (;;) {
+		k_msgq_get(&cont_report_rx_dataq, &msg, K_FOREVER);
+
+		printk("\nReceived %d reports, in %d us\n", msg.notify_cnt, msg.total_time_us);
+		if (msg.notify_cnt > 1) {
+			avg_interval_us = msg.total_time_us / (msg.notify_cnt - 1);
+			printk("Average report interval: %u us, max %u us, min %u us\n",
+				avg_interval_us, msg.max_interval_us, msg.min_interval_us);
+		}
+		if (msg.report_interval_us > 0) {
+			printk("Expected report interval: %u us\n", msg.report_interval_us);
+			printk("Intervals above %d us: %d\n",
+				msg.report_interval_us
+				+ CONTINUOUS_REPORT_RECEIVING_WINDOW_DELTA_US,
+				msg.above_window_count);
+			printk("Intervals below %d us: %d\n",
+				msg.report_interval_us
+				- CONTINUOUS_REPORT_RECEIVING_WINDOW_DELTA_US,
+				msg.below_window_count);
+		}
+	}
+}
+
+static void cont_rx_stats_print_thread_start(void)
+{
+	k_thread_create(&cont_report_rx_stats_print_thread_data, cont_report_rx_stats_print_stack,
+			K_THREAD_STACK_SIZEOF(cont_report_rx_stats_print_stack),
+			cont_report_rx_stats_print_thread_fn, NULL,
+			NULL, NULL, CONT_REPORT_RX_STATS_PRINT_PRIO, 0, K_NO_WAIT);
+	k_thread_name_set(&cont_report_rx_stats_print_thread_data, "cont_report_rx_stats_print");
+}
+
+static void cont_rx_stats_print_thread_push(uint32_t batch_end_cycles)
+{
+	struct cont_report_rx_data cont_rx_stats_msg = {
+		.notify_cnt = hogp_notify_cnt,
+		.report_interval_us = cont_report_rx_interval_us,
+		.total_time_us = k_cyc_to_us_floor32(batch_end_cycles
+						     - hogp_notify_batch_start_cycles),
+		.max_interval_us = cont_report_rx_max_interval_us,
+		.min_interval_us = cont_report_rx_min_interval_us,
+		.above_window_count = cont_report_rx_above_window_count,
+		.below_window_count = cont_report_rx_below_window_count,
+	};
+
+	if (k_msgq_put(&cont_report_rx_dataq, &cont_rx_stats_msg, K_NO_WAIT) != 0) {
+		printk("cont report rx stats queue full\n");
+	}
+}
+
+static void cont_report_rx_timer_expire(struct k_timer *timer)
+{
+	ARG_UNUSED(timer);
+
+	if (hogp_notify_cnt > 0) {
+		cont_rx_stats_print_thread_push(cont_report_rx_previous_report_cycles);
+	}
+
+	atomic_set(&cont_report_rx_on, 0);
+	printk("\nContinuous report receiving disabled due to prolonged inactivity\n");
+}
+
+static void cont_report_rx_timer_restart(void)
+{
+	k_timer_start(&cont_report_rx_timer,
+		      K_USEC(CONTINUOUS_REPORT_RECEIVING_EXIT_THRESHOLD_US),
+		      K_NO_WAIT);
+}
 
 static void scan_filter_match(struct bt_scan_device_info *device_info,
 			      struct bt_scan_filter_match *filter_match,
@@ -201,6 +364,23 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 
 	printk("Connected: %s\n", addr);
 
+	if (conn == default_conn) {
+		struct bt_conn_info conn_info;
+
+		err = bt_conn_get_info(conn, &conn_info);
+		if (!err) {
+			printk("Connection interval: %u us\n", conn_info.le.interval_us);
+			/** Currently connection interval is equal to expected report interval
+			 *  This will however not be the case if subrating is enabled.
+			 */
+			cont_report_rx_interval_us = conn_info.le.interval_us;
+			printk("Expected report interval: %u us\n", cont_report_rx_interval_us);
+		} else {
+			printk("Failed to get connection interval\n");
+			cont_report_rx_interval_us = 0;
+		}
+	}
+
 	err = bt_conn_set_security(conn, BT_SECURITY_L2);
 	if (err) {
 		printk("Failed to set security: %d\n", err);
@@ -232,6 +412,10 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		return;
 	}
 
+	atomic_set(&cont_report_rx_on, 0);
+	k_timer_stop(&cont_report_rx_timer);
+	cont_report_rx_data_reset();
+
 	bt_conn_unref(default_conn);
 	default_conn = NULL;
 
@@ -259,10 +443,30 @@ static void security_changed(struct bt_conn *conn, bt_security_t level,
 	gatt_discover(conn);
 }
 
+static void le_param_updated(struct bt_conn *conn, uint16_t interval,
+			      uint16_t latency, uint16_t timeout)
+{
+	ARG_UNUSED(latency);
+	ARG_UNUSED(timeout);
+
+	if (conn != default_conn) {
+		return;
+	}
+
+	if (hogp_notify_cnt > 0) {
+		cont_rx_stats_print_thread_push(cont_report_rx_previous_report_cycles);
+	}
+	cont_report_rx_data_reset();
+	cont_report_rx_interval_us = BT_CONN_INTERVAL_TO_US(interval);
+	printk("Connection interval updated to %u us\n",
+		cont_report_rx_interval_us);
+}
+
 BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected        = connected,
 	.disconnected     = disconnected,
-	.security_changed = security_changed
+	.security_changed = security_changed,
+	.le_param_updated = le_param_updated,
 };
 
 static void scan_init(void)
@@ -296,12 +500,88 @@ static uint8_t hogp_notify_cb(struct bt_hogp *hogp,
 			     uint8_t err,
 			     const uint8_t *data)
 {
-	uint8_t size = bt_hogp_rep_size(rep);
-	uint8_t i;
+	bool first_in_batch = false;
+	uint32_t now = k_cycle_get_32();
+	uint32_t last = cont_report_rx_previous_report_cycles;
+
+	cont_report_rx_previous_report_cycles = now;
 
 	if (!data) {
 		return BT_GATT_ITER_STOP;
 	}
+
+	if (hogp_notify_cnt == 0U) {
+		/* First report in the batch */
+		hogp_notify_batch_start_cycles = now;
+		first_in_batch = true;
+	}
+
+	hogp_notify_cnt++;
+
+	if (atomic_get(&cont_report_rx_on)) {
+		if (first_in_batch) {
+			/* Nothing to calculate for the first report in the batch */
+			return BT_GATT_ITER_CONTINUE;
+		}
+
+		uint32_t time_elapsed = k_cyc_to_us_floor32(now - last);
+
+		if (time_elapsed > cont_report_rx_max_interval_us) {
+			cont_report_rx_max_interval_us = time_elapsed;
+		}
+		if (time_elapsed < cont_report_rx_min_interval_us) {
+			cont_report_rx_min_interval_us = time_elapsed;
+		}
+		if (cont_report_rx_interval_us > 0) {
+			if (time_elapsed > cont_report_rx_interval_us
+					    + CONTINUOUS_REPORT_RECEIVING_WINDOW_DELTA_US) {
+				cont_report_rx_above_window_count++;
+			}
+			if (time_elapsed < cont_report_rx_interval_us
+						   - CONTINUOUS_REPORT_RECEIVING_WINDOW_DELTA_US) {
+				cont_report_rx_below_window_count++;
+			}
+		}
+
+		if (hogp_notify_cnt %
+		    CONTINUOUS_REPORT_RECEIVING_PRINT_INFO_RATE == 0) {
+			/*
+			 * Offload printk so it does not perturb notification timing.
+			 */
+			cont_rx_stats_print_thread_push(now);
+			cont_report_rx_data_reset();
+		}
+
+		cont_report_rx_timer_restart();
+		return BT_GATT_ITER_CONTINUE;
+	}
+
+	uint8_t i;
+	uint8_t size = bt_hogp_rep_size(rep);
+
+	if (hogp_notify_cnt % CONT_REPORT_RX_ENTRANCE_SAMPLE_REPORTS == 0) {
+		/*
+		 * Note: theoretically we could hit this condition if a notification is
+		 * received right after the counter wrapped around, but this is extremely
+		 * unlikely and the consequences are negligible. No extra check keeps the
+		 * code simpler.
+		 */
+		if (k_cyc_to_us_floor32(now - hogp_notify_batch_start_cycles)
+		    < CONTINUOUS_REPORT_RECEIVING_ENTRANCE_THRESHOLD_US) {
+			atomic_set(&cont_report_rx_on, 1);
+			printk("Continuous report receiving enabled due to"
+			       " short time interval between notifications.\n"
+			       "Expected report interval: %u us\n",
+			       cont_report_rx_interval_us);
+			cont_report_rx_data_reset();
+			cont_report_rx_timer_restart();
+			return BT_GATT_ITER_CONTINUE;
+		}
+
+		hogp_notify_cnt = 0;
+	}
+
+
 	printk("Notification, id: %u, size: %u, data:",
 	       bt_hogp_rep_id(rep),
 	       size);
@@ -647,6 +927,8 @@ int main(void)
 	int err;
 
 	printk("Starting Bluetooth Central HIDS sample\n");
+
+	cont_rx_stats_print_thread_start();
 
 	bt_hogp_init(&hogp, &hogp_init_params);
 
