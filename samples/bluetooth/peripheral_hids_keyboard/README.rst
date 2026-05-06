@@ -167,6 +167,12 @@ If continuous report sending is enabled, any button press other than the designa
 
 .. peripheral-hids-continuous-report-sending-shared-start
 
+Whenever the continuous report sending is halted, the following statistics are displayed:
+
+* The total number of connection intervals.
+* The number of reports that were not sent on time.
+* The number of connection intervals with no report sent.
+
 To print interval statistics on the central side, run the :ref:`bluetooth_central_hids` sample against this peripheral.
 
 The feature is not supported in the Boot Protocol mode.

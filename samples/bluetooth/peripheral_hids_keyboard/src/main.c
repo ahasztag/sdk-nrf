@@ -198,6 +198,14 @@ static size_t cont_report_tx_conn_idx;
  */
 static atomic_t cont_report_tx_pending_reports = ATOMIC_INIT(0);
 
+/** Incremented once per radio prepare callback; used to measure notify ACK latency. */
+static uint32_t cont_report_tx_seq;
+
+/** Reports which were not sent on the nearest connection interval. */
+static uint32_t cont_report_tx_delayed_reps;
+
+/** Intervals in which no report was sent to avoid filling up the pipeline. */
+static uint32_t cont_report_tx_dropped;
 #endif /* CONFIG_SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING */
 
 static void advertising_start(void)
@@ -704,6 +712,14 @@ static void report_sent(struct bt_conn *conn, void *user_data)
 
 	previous_value = atomic_dec(&cont_report_tx_pending_reports);
 
+	if (user_data != NULL) {
+		uint32_t current_seq = cont_report_tx_seq;
+		uint32_t original_seq = (uint32_t)user_data;
+
+		if (current_seq - original_seq > 1) {
+			cont_report_tx_delayed_reps++;
+		}
+	}
 	/* Protect against a rare race condition where the host has disconnected
 	 * and a late arriving report sent callback would decrement the counter below 0.
 	 * This may happen as disconnect resets the counter.
@@ -747,12 +763,11 @@ static int key_report_con_send(const struct keyboard_state *state,
 		err = bt_hids_inp_rep_send(&hids_obj, conn,
 						INPUT_REP_KEYS_IDX, data,
 						sizeof(data), NULL);
-	}
-	else {
+	} else {
 		err = bt_hids_inp_rep_send_userdata(&hids_obj, conn,
 						    INPUT_REP_KEYS_IDX, data,
 						    sizeof(data), report_sent,
-						    NULL);
+						    (void *)cont_report_tx_seq);
 	}
 	return err;
 }
@@ -807,6 +822,8 @@ static void radio_notification_conn_cb(struct bt_conn *conn)
 	ARG_UNUSED(conn);
 
 	if (atomic_get(&cont_report_tx_on)) {
+		cont_report_tx_seq++;
+
 		/** Allow up to 1 unACKed report in flight so the next prep can still schedule
 		 *  the next report while the previous one is awaiting the report_sent callback.
 		 *  With CONFIG_BT_ATT_SENT_CB_AFTER_TX=y the callback for a TX in cycle X
@@ -816,6 +833,8 @@ static void radio_notification_conn_cb(struct bt_conn *conn)
 		 */
 		if (atomic_get(&cont_report_tx_pending_reports) < 2) {
 			k_work_submit(&cont_report_tx_work);
+		} else {
+			cont_report_tx_dropped++;
 		}
 	}
 }
@@ -980,6 +999,26 @@ static void num_comp_reply(bool accept)
 	}
 }
 
+static void continuous_report_tx_toggle(void) {
+		if (conn_mode[cont_report_tx_conn_idx].in_boot_mode) {
+			printk("Continuous report sending not supported in boot mode\n");
+			return;
+		}
+
+		atomic_xor(&cont_report_tx_on, 1);
+
+		if (atomic_get(&cont_report_tx_on) == 1) {
+			printk("Starting continuous report sending\n");
+			cont_report_tx_delayed_reps = 0;
+			cont_report_tx_dropped = 0;
+			cont_report_tx_seq = 0;
+		} else {
+			printk("Continuous report sending stopped\n");
+			printk("Overall connection intervals: %d\n", cont_report_tx_seq);
+			printk("Reports not sent in time: %d\n", cont_report_tx_delayed_reps);
+			printk("Dropped connection intervals: %d\n", cont_report_tx_dropped);
+		}
+}
 
 static void button_changed(uint32_t button_state, uint32_t has_changed)
 {
@@ -1013,21 +1052,7 @@ static void button_changed(uint32_t button_state, uint32_t has_changed)
 
 #if CONFIG_SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING
 	if ((button_state & KEYS_CONTINUOUS_REPORT_TX_MASK) == KEYS_CONTINUOUS_REPORT_TX_MASK) {
-		if (conn_mode[cont_report_tx_conn_idx].in_boot_mode) {
-			printk("Continuous report sending not supported in boot mode\n");
-			return;
-		}
-
-		atomic_xor(&cont_report_tx_on, 1);
-
-		if (atomic_get(&cont_report_tx_on) == 1) {
-			printk("Starting continuous report sending
-");
-		} else {
-			printk("Continuous report sending stopped
-");
-		}
-
+		continuous_report_tx_toggle();
 		return;
 	}
 #endif /* CONFIG_SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING */
