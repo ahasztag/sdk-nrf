@@ -44,6 +44,24 @@ extern "C" {
 /** Length of encoded HID Information. */
 #define BT_HIDS_INFORMATION_LEN	4
 
+/** Maximum number of connection interval groups in HID SCI Information. */
+#if defined(CONFIG_BT_HIDS_SCI_INFORMATION_MAX_GROUPS_COUNT)
+#define BT_HIDS_SCI_INFORMATION_MAX_GROUPS CONFIG_BT_HIDS_SCI_INFORMATION_MAX_GROUPS_COUNT
+#else
+#define BT_HIDS_SCI_INFORMATION_MAX_GROUPS BT_CONN_LE_MAX_CONN_INTERVAL_GROUPS
+#endif
+/** Max length of encoded HID SCI Information based on the HIDS specification:
+ *  Minimum supported conn interval (1 B) + Num groups (1 B) +
+ *  Num groups * (Group Min (2 B) + Group Max (2 B) + Group Stride (2 B)).
+ */
+#define BT_HIDS_SCI_INFORMATION_MAX_LEN (1 + 1 + BT_HIDS_SCI_INFORMATION_MAX_GROUPS * (2 + 2 + 2))
+#define BT_HIDS_SCI_INFORMATION_MIN_LEN  2
+
+/** The transport interval which the device must support to be compliant
+ *  with the HID over GATT Profile specification (chapter 7.4).
+ */
+#define BT_HIDS_MAX_MINIMAL_TRANSPORT_INTERVAL_US 1250
+
 /**
  * @brief Declare a HIDS instance.
  *
@@ -116,15 +134,37 @@ enum bt_hids_flags {
 	BT_HIDS_REMOTE_WAKE = BIT(0),
 	/** Device advertises when bonded but not connected. */
 	BT_HIDS_NORMALLY_CONNECTABLE = BIT(1),
+	/** Device is capable of supporting the HID SCI feature */
+	BT_HIDS_SCI_SUPPORTED = BIT(2),
+	/** Device is capable of supporting the HID SCI Low Power mode feature */
+	BT_HIDS_SCI_LOW_POWER_MODE_SUPPORTED = BIT(3),
 };
 
-/** @brief HID Control Point settings. */
-enum bt_hids_control_point {
+/**
+ * @brief HID Control Point settings.
+ *
+ * @deprecated Use @ref bt_hids_cp_evt instead
+ */
+__deprecated enum bt_hids_control_point {
 	/** Suspend value for Control Point.  */
 	BT_HIDS_CONTROL_POINT_SUSPEND = 0x00,
 
 	/** Exit suspend value for Control Point.*/
-	BT_HIDS_CONTROL_POINT_EXIT_SUSPEND = 0x01
+	BT_HIDS_CONTROL_POINT_EXIT_SUSPEND = 0x01,
+};
+
+/** @brief HID SCI Mode values */
+enum bt_hids_sci_mode_value {
+	/** SCI None mode. */
+	BT_HIDS_SCI_MODE_NONE = 0x00,
+	/** SCI Default mode. */
+	BT_HIDS_SCI_MODE_DEFAULT = 0x02,
+	/** SCI Fast mode. */
+	BT_HIDS_SCI_MODE_FAST = 0x03,
+	/** SCI Low Power mode. */
+	BT_HIDS_SCI_MODE_LOW_POWER = 0x04,
+	/** SCI Full Range mode. */
+	BT_HIDS_SCI_MODE_FULL_RANGE = 0x05,
 };
 
 /** HID Service Protocol Mode events. */
@@ -137,10 +177,18 @@ enum bt_hids_pm_evt {
 
 /** HID Service Control Point events. */
 enum bt_hids_cp_evt {
-	/** Suspend command received. */
-	BT_HIDS_CP_EVT_HOST_SUSP,
-	/** Exit suspend command received. */
-	BT_HIDS_CP_EVT_HOST_EXIT_SUSP,
+	/** Suspend command. */
+	BT_HIDS_CP_EVT_HOST_SUSP = 0x00,
+	/** Exit suspend command. */
+	BT_HIDS_CP_EVT_HOST_EXIT_SUSP = 0x01,
+	/** SCI Default mode request. */
+	BT_HIDS_CP_EVT_HOST_SCI_DEFAULT_REQ = 0x02,
+	/** SCI Fast mode request. */
+	BT_HIDS_CP_EVT_HOST_SCI_FAST_REQ = 0x03,
+	/** SCI Low Power mode request. */
+	BT_HIDS_CP_EVT_HOST_SCI_LOW_POWER_REQ = 0x04,
+	/** SCI Full Range mode request. */
+	BT_HIDS_CP_EVT_HOST_SCI_FULL_RANGE_REQ = 0x05,
 };
 
 /** HID notification events. */
@@ -378,10 +426,20 @@ struct bt_hids_pm_data {
 
 /** @brief HID Control Point event handler.
  *
+ * @deprecated Use @ref bt_hids_conn_cp_evt_handler_t instead
+ *
  * @param evt Event indicating that the Control Point value has changed.
  * (see @ref bt_hids_cp_evt).
  */
 typedef void (*bt_hids_cp_evt_handler_t) (enum bt_hids_cp_evt evt);
+
+/** @brief HID Control Point event handler.
+ *
+ * @param evt Event indicating that the Control Point value has changed.
+ * (see @ref bt_hids_cp_evt).
+ * @param conn Pointer to Connection Object.
+ */
+typedef void (*bt_hids_conn_cp_evt_handler_t) (enum bt_hids_cp_evt evt, struct bt_conn *conn);
 
 /** @brief Control Point.
  */
@@ -391,7 +449,23 @@ struct bt_hids_cp {
 
 	/** Callback with new Control Point state.*/
 	bt_hids_cp_evt_handler_t evt_handler;
+
+	/** Callback with new Control Point state.*/
+	bt_hids_conn_cp_evt_handler_t conn_evt_handler;
 };
+
+#if defined(CONFIG_BT_HIDS_SCI)
+/** @brief SCI mode.
+ */
+struct bt_hids_sci_mode_data {
+	/** CCC descriptor. */
+	struct bt_gatt_ccc_managed_user_data ccc;
+
+	/** Index in the service attribute array. */
+	uint8_t att_ind;
+};
+
+#endif /* CONFIG_BT_HIDS_SCI */
 
 /** @brief HID initialization.
  */
@@ -414,8 +488,14 @@ struct bt_hids_init_param {
 	/** Callback for Protocol Mode characteristic. */
 	bt_hids_pm_evt_handler_t pm_evt_handler;
 
-	/** Callback for Control Point characteristic. */
+	/** Callback for Control Point event.
+	 *
+	 * @deprecated Use @ref conn_cp_evt_handler instead
+	 */
 	bt_hids_cp_evt_handler_t cp_evt_handler;
+
+	/** Callback for Control Point event. */
+	bt_hids_conn_cp_evt_handler_t conn_cp_evt_handler;
 
 	/** Callback for Boot Mouse Input Report. */
 	bt_hids_notify_handler_t boot_mouse_notif_handler;
@@ -466,6 +546,10 @@ struct bt_hids {
 	/** Control Point. */
 	struct bt_hids_cp cp;
 
+#if defined(CONFIG_BT_HIDS_SCI)
+	/** SCI mode data. */
+	struct bt_hids_sci_mode_data sci_mode_data;
+#endif
 	/** Buffer with encoded HID Information. */
 	uint8_t info[BT_HIDS_INFORMATION_LEN];
 
@@ -502,6 +586,14 @@ struct bt_hids_conn_data {
 
 	/** Pointer to Feature Reports Context data. */
 	uint8_t *feat_rep_ctx;
+
+#if defined(CONFIG_BT_HIDS_SCI)
+	/** Pending SCI mode value. */
+	uint8_t pending_sci_mode;
+
+	/** SCI mode value. */
+	uint8_t sci_mode;
+#endif
 };
 
 
@@ -631,6 +723,51 @@ int bt_hids_boot_kb_inp_rep_send(struct bt_hids *hids_obj, struct bt_conn *conn,
 				 uint8_t const *rep, uint16_t len,
 				 bt_gatt_complete_func_t cb);
 
+/** @brief Request a new HID SCI mode.
+ *         This function will request connection parameters for the mode.
+ *         The user of the API must call @ref bt_hids_sci_conn_rate_changed to apply the new mode
+ *         when the connection rate change event is received from the Bluetooth stack
+ *         (conn_rate_changed callback).
+ *
+ *  @note The function is not thread safe.
+ *
+ *  @param conn Pointer to Connection Object.
+ *  @param mode New SCI mode.
+ *
+ *  @return 0 If the operation was successful.
+ *          Otherwise, a (negative) error code is returned.
+ */
+int bt_hids_sci_mode_change_request(struct bt_conn *conn,
+				 enum bt_hids_sci_mode_value mode);
+
+/** @brief Handle a SCI connection rate change.
+ *         This function will validate the new connection parameters
+ *         to the SCI mode pending from a previous call to @ref bt_hids_sci_mode_change_request
+ *         and apply the new mode on success.
+ *         If the connection parameters do not match the pending mode
+ *         the mode will be set to NONE.
+ *         If no pending mode is set, the current mode will be validated against the new
+ *         connection parameters.
+ *         The new SCI mode will be returned in the new_mode parameter.
+ *         Calling this function with status != BT_HCI_ERR_SUCCESS will clear the pending mode.
+ *
+ *  @note The function is not thread safe.
+ *  @note As the HID SCI mode must be the same for all HID services,
+ *        this function does not require the bt_hids object parameter.
+ *        It will update the mode for all registered services.
+ *
+ *  @param conn Pointer to Connection Object.
+ *  @param status Status of the connection rate change.
+ *  @param params Parameters of the connection rate change.
+ *  @param new_mode Output parameter for the new SCI mode.
+ *
+ *  @return 0 if the mode was updated to the pending mode
+ *          -EPIPE if the mode defaulted to NONE due to parameters validation error.
+ *          Otherwise, a (negative) error code is returned.
+ */
+int bt_hids_sci_conn_rate_changed(struct bt_conn *conn, uint8_t status,
+			       const struct bt_conn_le_conn_rate_changed *params,
+			       enum bt_hids_sci_mode_value *new_mode);
 
 #ifdef __cplusplus
 }
