@@ -184,7 +184,7 @@ See `Samples`_ for lists of changes for the protocol-related samples.
 Bluetooth® LE
 -------------
 
-|no_changes_yet_note|
+* Added support for Bluetooth HID Shorter Connection Intervals (SCI) in the :ref:`hids_readme` and :ref:`hogp_readme` libraries.
 
 Bluetooth Mesh
 --------------
@@ -518,6 +518,10 @@ Bluetooth libraries and services
 * :ref:`bt_fast_pair_readme` library:
 
   * Fixed missing ATT write length validation in the GATT write handler for the Fast Pair Additional Data characteristic, used by the experimental Personalized Name extension (:kconfig:option:`CONFIG_BT_FAST_PAIR_PN`).
+
+* :ref:`hids_readme` and :ref:`hogp_readme` libraries:
+
+  * Added support for Bluetooth HID Shorter Connection Intervals (SCI) on the HID device and HID host sides (:kconfig:option:`CONFIG_BT_HIDS_SCI`, :kconfig:option:`CONFIG_BT_HOGP_SCI`).
 
 Common Application Framework
 ----------------------------
