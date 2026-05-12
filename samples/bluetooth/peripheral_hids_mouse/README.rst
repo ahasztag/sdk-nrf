@@ -164,6 +164,14 @@ The high-duty cycle directed advertising has a timeout of 1.28 seconds defined b
 If the timeout occurs, the device starts directed advertising to the next bonded peer.
 If all bonding information is used and there is still no connection, the regular advertising starts.
 
+HID Shorter Connection Intervals (SCI)
+--------------------------------------
+
+If the sample is built with the additional extra configuration file :file:`hid_sci.conf`, support for HID Shorter Connection Intervals (SCI) is enabled.
+This feature allows the device to enter a specific HID SCI mode when requested by the central.
+The HID SCI modes are sets of connection parameters which can be used to optimize the connection for the specific use case.
+For example, the FAST mode is used to achieve the shortest connection intervals, allowing for minimum latency and maximum throughput.
+
 Building and running
 ********************
 
@@ -177,6 +185,8 @@ Building and running
 .. include:: /includes/ipc_radio_conf.txt
 
 .. _peripheral_hids_mouse_bt_rpc_build:
+
+To build the sample with HID SCI support, build with ``-DEXTRA_CONF_FILE=hid_sci.conf``
 
 Bluetooth RPC build
 ===================

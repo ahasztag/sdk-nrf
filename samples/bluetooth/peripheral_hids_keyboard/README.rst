@@ -200,6 +200,8 @@ Building and running
 
 .. include:: /includes/ipc_radio_conf.txt
 
+To build the sample with HID SCI support, build with ``-DEXTRA_CONF_FILE=hid_sci.conf``
+
 Testing
 =======
 

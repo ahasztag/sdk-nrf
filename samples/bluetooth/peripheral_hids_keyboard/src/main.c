@@ -408,10 +408,60 @@ static void security_changed(struct bt_conn *conn, bt_security_t level,
 	}
 }
 
+#ifdef CONFIG_BT_HIDS_SCI
+
+static void conn_rate_changed(struct bt_conn *conn, uint8_t status,
+			      const struct bt_conn_le_conn_rate_changed *params)
+{
+	const char *mode_str = "UNKNOWN";
+	size_t conn_index = 0xFFFFFFFF;
+	enum bt_hids_sci_mode_value new_mode;
+
+	int err = bt_hids_sci_conn_rate_changed(conn, status, params, &new_mode);
+	if (err && err != -EPIPE) {
+		printk("Failed to handle SCI connection rate change: %d\n", err);
+		return;
+	}
+
+	for (size_t i = 0; i < ARRAY_SIZE(conn_mode); i++) {
+		if (conn_mode[i].conn == conn) {
+			conn_index = i;
+			break;
+		}
+	}
+
+	switch (new_mode) {
+	case BT_HIDS_SCI_MODE_NONE:
+		mode_str = "NONE";
+		break;
+	case BT_HIDS_SCI_MODE_DEFAULT:
+		mode_str = "DEFAULT";
+		break;
+	case BT_HIDS_SCI_MODE_FAST:
+		mode_str = "FAST";
+		break;
+	case BT_HIDS_SCI_MODE_LOW_POWER:
+		mode_str = "LOW_POWER";
+		break;
+	case BT_HIDS_SCI_MODE_FULL_RANGE:
+		mode_str = "FULL_RANGE";
+		break;
+	default:
+		mode_str = "UNKNOWN";
+		break;
+	}
+
+	printk("SCI mode updated to: %s for connection %d\n", mode_str, conn_index);
+}
+#endif
+
 BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected = connected,
 	.disconnected = disconnected,
 	.security_changed = security_changed,
+#ifdef CONFIG_BT_HIDS_SCI
+	.conn_rate_changed = conn_rate_changed,
+#endif /* CONFIG_BT_HIDS_SCI */
 };
 
 
@@ -499,6 +549,51 @@ static void hids_pm_evt_handler(enum bt_hids_pm_evt evt,
 	}
 }
 
+#if defined(CONFIG_BT_HIDS_SCI)
+
+static void conn_cp_evt_handler(enum bt_hids_cp_evt evt, struct bt_conn *conn)
+{
+	const char *evt_str = "UNKNOWN";
+	enum bt_hids_sci_mode_value new_mode = BT_HIDS_SCI_MODE_NONE;
+
+	switch (evt) {
+	case BT_HIDS_CP_EVT_HOST_SUSP:
+		evt_str = "SUSP";
+		break;
+	case BT_HIDS_CP_EVT_HOST_EXIT_SUSP:
+		evt_str = "EXIT_SUSP";
+		break;
+	case BT_HIDS_CP_EVT_HOST_SCI_DEFAULT_REQ:
+		evt_str = "SCI_DEFAULT_REQ";
+		new_mode = BT_HIDS_SCI_MODE_DEFAULT;
+		break;
+	case BT_HIDS_CP_EVT_HOST_SCI_FAST_REQ:
+		evt_str = "SCI_FAST_REQ";
+		new_mode = BT_HIDS_SCI_MODE_FAST;
+		break;
+	case BT_HIDS_CP_EVT_HOST_SCI_LOW_POWER_REQ:
+		evt_str = "SCI_LOW_POWER_REQ";
+		new_mode = BT_HIDS_SCI_MODE_LOW_POWER;
+		break;
+	case BT_HIDS_CP_EVT_HOST_SCI_FULL_RANGE_REQ:
+		evt_str = "SCI_FULL_RANGE_REQ";
+		new_mode = BT_HIDS_SCI_MODE_FULL_RANGE;
+		break;
+	default:
+		evt_str = "UNKNOWN";
+		break;
+	}
+
+	printk("Control point event received: %s\n", evt_str);
+
+	if (new_mode != BT_HIDS_SCI_MODE_NONE) {
+		int err = bt_hids_sci_mode_change_request(conn, new_mode);
+		if (err) {
+			printk("Failed to request SCI mode change: %d\n", err);
+		}
+	}
+}
+#endif /* CONFIG_BT_HIDS_SCI */
 
 static void hid_init(void)
 {
@@ -562,8 +657,7 @@ static void hid_init(void)
 
 	hids_init_obj.info.bcd_hid = BASE_USB_HID_SPEC_VERSION;
 	hids_init_obj.info.b_country_code = 0x00;
-	hids_init_obj.info.flags = (BT_HIDS_REMOTE_WAKE |
-				    BT_HIDS_NORMALLY_CONNECTABLE);
+	hids_init_obj.info.flags = (BT_HIDS_REMOTE_WAKE | BT_HIDS_NORMALLY_CONNECTABLE);
 
 	hids_inp_rep =
 		&hids_init_obj.inp_rep_group_init.reports[INPUT_REP_KEYS_IDX];
@@ -581,6 +675,9 @@ static void hid_init(void)
 	hids_init_obj.is_kb = true;
 	hids_init_obj.boot_kb_outp_rep_handler = hids_boot_kb_outp_rep_handler;
 	hids_init_obj.pm_evt_handler = hids_pm_evt_handler;
+#if defined(CONFIG_BT_HIDS_SCI)
+	hids_init_obj.conn_cp_evt_handler = conn_cp_evt_handler;
+#endif
 
 	err = bt_hids_init(&hids_obj, &hids_init_obj);
 	__ASSERT(err == 0, "HIDS initialization failed\n");

@@ -83,6 +83,12 @@ User interface
          This function is available only if the connected HID has boot keyboard reports.
          It always writes CAPSLOCK information to the boot report, even if Report Protocol Mode is selected.
 
+      Button 4:
+         Switch to the "Additional button functions" mode.
+         In this mode the buttons have different functionalities:
+         - Button 2 (HID SCI configuration only): Switch to the next SCI mode (Currently only supported in HID SCI configuration).
+         - Button 4: Exit the "Additional button functions" mode.
+
    .. group-tab:: nRF54 DKs
 
       Button 0:
@@ -102,11 +108,19 @@ User interface
          This function is available only if the connected HID has boot keyboard reports.
          It always writes CAPSLOCK information to the boot report, even if Report Protocol Mode is selected.
 
+      Button 3:
+        Switch to the "Additional button functions" mode.
+        In this mode the buttons have different functionalities:
+        - Button 1 (HID SCI configuration only): Switch to the next SCI mode (Currently only supported in HID SCI configuration).
+        - Button 3: Exit the "Additional button functions" mode.
+
 Building and Running
 ********************
 .. |sample path| replace:: :file:`samples/bluetooth/central_hids`
 
 .. include:: /includes/build_and_run_ns.txt
+
+To build the sample with HID SCI support, build with ``-DEXTRA_CONF_FILE=hid_sci.conf``
 
 Testing
 =======
@@ -124,6 +138,7 @@ Testing with another development kit
       1. |connect_terminal_specific|
       #. Reset the kit.
       #. Program the other kit with the :ref:`peripheral_hids_keyboard` sample and reset it.
+      #. If you see "NFC configuration done" on the peripheral kit, press **Button 4** on the peripheral kit in order for it to start advertising.
       #. When connected, press **Button 1** on both devices to confirm the passkey value used for bonding, or press **Button 2** to reject it.
       #. Wait until the HIDS keyboard is detected by the central.
          All detected descriptors are listed.
@@ -167,6 +182,7 @@ Testing with another development kit
       1. |connect_terminal_specific|
       #. Reset the kit.
       #. Program the other kit with the :ref:`peripheral_hids_keyboard` sample and reset it.
+      #. If you see "NFC configuration done" on the peripheral kit, press **Button 3** on the peripheral kit in order for it to start advertising.
       #. When connected, press **Button 0** on both devices to confirm the passkey value used for bonding, or press **Button 1** to reject it.
       #. Wait until the HIDS keyboard is detected by the central.
          All detected descriptors are listed.
@@ -304,6 +320,32 @@ Testing with Bluetooth Low Energy app
          Change any of the values and note that the kit logs the change.
       #. Press **Button 1** on the kit and observe that the **Protocol Mode** value changes from ``01`` to ``00``.
       #. Press **Button 0** and **Button 2** one after another and observe that the **Boot Keyboard Output Report** value toggles between ``00`` and ``02``.
+
+Testing with HID SCI support
+----------------------------
+
+To test the sample with HID SCI support, both the central and the peripheral must be built with ``-DEXTRA_CONF_FILE=hid_sci.conf``
+
+   .. group-tab:: nRF54 DKs
+
+      1. |connect_terminal_specific|
+      #. Reset the kit.
+      #. Program the other kit with the :ref:`peripheral_hids_keyboard` sample and reset it.
+      #. If you see "NFC configuration done" on the peripheral kit, press **Button 3** on the peripheral kit in order for it to start advertising.
+      #. When connected, press **Button 0** on both devices to confirm the passkey value used for bonding, or press **Button 1** to reject it.
+      #. Wait until the HIDS keyboard is detected by the central.
+         Check for information similar to the following::
+
+            HIDS is ready to work
+            Subscribe in report id: 1
+            Subscribe in boot keyboard report
+      #. Press **Button 4** on the central kit and wait for the SCI mode to change to DEFAULT.
+      #. Cycle through the HID SCI modes by pressing **Button 4** on the central kit.
+         The HID SCI mode will change to FAST, LOW POWER, FULL RANGE, and DEFAULT again.
+         Every time you might need to wait a few seconds for the mode to change.
+         You will see a message similar to the following::
+
+            SCI mode changed notification received, new mode: <mode_name>
 
 Dependencies
 *************
