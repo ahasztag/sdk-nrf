@@ -49,6 +49,9 @@
 #define KEY_PAIRING_ACCEPT DK_BTN1_MSK
 #define KEY_PAIRING_REJECT DK_BTN2_MSK
 
+/** Key used to enter/exit additional button function mode (toggle on same DK button). */
+#define KEY_ADDITIONAL_FUNCTIONS_MASK DK_BTN4_MSK
+
 /**
  * Entrance into continuous receive mode: after every
  * CONT_REPORT_RX_ENTRANCE_SAMPLE_REPORTS notifications we measure how long that batch took;
@@ -96,6 +99,7 @@ static struct bt_conn *default_conn;
 static struct bt_hogp hogp;
 static struct bt_conn *auth_conn;
 static uint8_t capslock_state;
+static bool btn_additional_functions_active;
 
 static atomic_t cont_report_rx_on = ATOMIC_INIT(0);
 static uint32_t cont_report_rx_previous_report_cycles;
@@ -828,6 +832,16 @@ static void button_handler(uint32_t button_state, uint32_t has_changed)
 {
 	uint32_t button = button_state & has_changed;
 
+	if (btn_additional_functions_active) {
+		/* Add handling for additional button functions here. */
+
+		if (button & KEY_ADDITIONAL_FUNCTIONS_MASK) {
+			btn_additional_functions_active = false;
+			printk("Additional button functions deactivated\n");
+		}
+		return;
+	}
+
 	if (auth_conn) {
 		if (button & KEY_PAIRING_ACCEPT) {
 			num_comp_reply(true);
@@ -848,6 +862,23 @@ static void button_handler(uint32_t button_state, uint32_t has_changed)
 	}
 	if (button & KEY_CAPSLOCK_RSP_MASK) {
 		button_capslock_rsp();
+	}
+	if (button & KEY_ADDITIONAL_FUNCTIONS_MASK) {
+		btn_additional_functions_active = true;
+		printk("Additional button functions activated.\n");
+		if (IS_ENABLED(CONFIG_SOC_SERIES_NRF54H) || IS_ENABLED(CONFIG_SOC_SERIES_NRF54L)) {
+			printk("No additional button functions available\n");
+
+			/* Print the active additional button functions here. */
+
+			printk("Button 3: exit additional button functions\n");
+		} else {
+			printk("No additional button functions available\n");
+
+			/* Print the active additional button functions here. */
+
+			printk("Button 4: exit additional button functions\n");
+		}
 	}
 }
 
