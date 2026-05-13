@@ -74,7 +74,6 @@ BUILD_ASSERT(CONFIG_CENTRAL_HIDS_SCI_SUPERVISION_TIMEOUT_10MS * 10000ULL >
 
 #define SCI_MODE_CHANGE_TIMEOUT_MS 10000
 
-static enum bt_hids_sci_mode_value sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
 #endif
 
 /**
@@ -144,6 +143,10 @@ struct peripheral_slot {
 	uint32_t cont_report_rx_below_window_count;
 	uint32_t hogp_notify_batch_start_cycles;
 	uint32_t hogp_notify_cnt;
+#if defined(CONFIG_BT_HOGP_SCI)
+	enum bt_hids_sci_mode_value sci_mode_requested;
+	struct k_work_delayable sci_mode_timeout;
+#endif
 };
 
 static struct peripheral_slot slots[PERIPHERAL_SLOT_COUNT];
@@ -165,8 +168,9 @@ struct cont_report_rx_data {
 
 static void hids_on_ready(struct k_work *work);
 
+#if defined(CONFIG_BT_HOGP_SCI)
 static void sci_mode_change_timeout_fn(struct k_work *work);
-static K_WORK_DELAYABLE_DEFINE(sci_mode_change_timeout, sci_mode_change_timeout_fn);
+#endif
 
 static struct peripheral_slot *slot_by_conn(struct bt_conn *conn)
 {
@@ -263,10 +267,6 @@ static void try_connect(struct bt_scan_device_info *device_info,
 	bt_conn_unref(conn);
 }
 
-#if PERIPHERAL_SLOT_COUNT == 1
-static void cont_report_rx_timer_expire(struct k_timer *timer);
-K_TIMER_DEFINE(cont_report_rx_timer, cont_report_rx_timer_expire, NULL);
-
 K_THREAD_STACK_DEFINE(cont_report_rx_stats_print_stack,
 		      CONT_REPORT_RX_STATS_PRINT_STACK_SIZE);
 static struct k_thread cont_report_rx_stats_print_thread_data;
@@ -298,7 +298,7 @@ static void cont_report_rx_stats_print_thread_fn(void *p1, void *p2, void *p3)
 	for (;;) {
 		k_msgq_get(&cont_report_rx_dataq, &msg, K_FOREVER);
 
-		printk("\n")
+		printk("\n");
 		PRINT_PERIPH_INDEX_STR(msg.peripheral_idx);
 		printk("Received %d reports, in %d us\n", msg.notify_cnt, msg.total_time_us);
 		if (msg.notify_cnt > 1) {
@@ -359,7 +359,7 @@ static void cont_report_rx_timer_expire(struct k_timer *timer)
 	}
 
 	atomic_set(&slot->cont_report_rx_on, 0);
-	printk("\n")
+	printk("\n");
 	PRINT_PERIPH_INDEX_STR(PERIPH_SLOT_INDEX(slot));
 	printk("Continuous report receiving disabled due to prolonged inactivity\n");
 }
@@ -637,32 +637,39 @@ static void le_param_updated(struct bt_conn *conn, uint16_t interval,
 	       slot->cont_report_rx_interval_us);
 }
 
+#if defined(CONFIG_BT_SHORTER_CONNECTION_INTERVALS)
 static void conn_rate_changed(struct bt_conn *conn, uint8_t status,
 			      const struct bt_conn_le_conn_rate_changed *params)
 {
-	ARG_UNUSED(conn);
-	ARG_UNUSED(status);
-	ARG_UNUSED(params);
+	struct peripheral_slot *slot = slot_by_conn(conn);
 
-	if (conn != default_conn) {
+	if (!slot) {
 		return;
 	}
 
-	if (hogp_notify_cnt > 0) {
-		cont_rx_stats_print_thread_push(cont_report_rx_previous_report_cycles);
+	if (status != BT_HCI_ERR_SUCCESS || params == NULL) {
+		return;
 	}
-	cont_report_rx_data_reset();
-	cont_report_rx_conn_interval_us = params->interval_us;
+
+	if (slot->hogp_notify_cnt > 0) {
+		cont_rx_stats_print_thread_push(slot, slot->cont_report_rx_previous_report_cycles);
+	}
+	cont_report_rx_data_reset(slot);
+	slot->cont_report_rx_interval_us = params->interval_us;
+	PRINT_PERIPH_INDEX_STR(PERIPH_SLOT_INDEX(slot));
 	printk("Connection interval updated to %u us\n",
-		cont_report_rx_conn_interval_us);
+	       slot->cont_report_rx_interval_us);
 }
+#endif
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected        = connected,
 	.disconnected     = disconnected,
 	.security_changed = security_changed,
 	.le_param_updated = le_param_updated,
+#if defined(CONFIG_BT_SHORTER_CONNECTION_INTERVALS)
 	.conn_rate_changed = conn_rate_changed,
+#endif
 };
 
 static void scan_init(void)
@@ -873,23 +880,33 @@ static const char *sci_mode_to_string(enum bt_hids_sci_mode_value mode) {
 
 static void sci_mode_change_timeout_fn(struct k_work *work)
 {
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+	struct peripheral_slot *slot = CONTAINER_OF(dwork, struct peripheral_slot, sci_mode_timeout);
+
+	PRINT_PERIPH_INDEX_STR(PERIPH_SLOT_INDEX(slot));
 	printk("SCI mode change timeout occurred.\n");
-	sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
+	slot->sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
 }
 
 static void sci_mode_notify_cb(struct bt_conn *conn, const uint8_t mode)
 {
+	struct peripheral_slot *slot = slot_by_conn(conn);
 	const char *mode_str = sci_mode_to_string(mode);
 
+	if (!slot) {
+		return;
+	}
+
+	PRINT_PERIPH_INDEX_STR(PERIPH_SLOT_INDEX(slot));
 	printk("SCI mode changed notification received, new mode: %s\n", mode_str);
 
-	if (mode == sci_mode_requested) {
-		k_work_cancel_delayable(&sci_mode_change_timeout);
-		sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
+	if (mode == slot->sci_mode_requested) {
+		k_work_cancel_delayable(&slot->sci_mode_timeout);
+		slot->sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
 		return;
-	} else {
-		printk("The new SCI mode does not match the requested one\n");
 	}
+
+	printk("The new SCI mode does not match the requested one\n");
 }
 #endif
 
@@ -934,7 +951,7 @@ static void hids_on_ready(struct k_work *work)
 	}
 
 #if defined(CONFIG_BT_HOGP_SCI)
-	err = bt_hogp_sci_mode_subscribe(&hogp, sci_mode_notify_cb);
+	err = bt_hogp_sci_mode_subscribe(hogp, sci_mode_notify_cb);
 	if (err) {
 		printk("SCI mode subscribe error (%d)\n", err);
 	}
@@ -1193,69 +1210,65 @@ static int set_default_conn_rate(void)
 
 static void button_sci_mode_next(void)
 {
-	if (!bt_hogp_ready_check(&hogp)) {
-		printk("HID device not ready\n");
-		return;
-	}
-
-	if (!bt_hogp_sci_supported(&hogp)) {
-		printk("HID device does not support SCI\n");
-		return;
-	}
-
-	if (sci_mode_requested != BT_HIDS_SCI_MODE_NONE) {
-		printk("SCI mode request already in progress!\n");
-		return;
-	}
-
-	const struct bt_hids_info *info = bt_hogp_conn_info_val(&hogp);
-	static uint8_t sci_mode_idx = 0;
-
-	if (!(info->flags & BT_HIDS_SCI_SUPPORTED)) {
-		printk("The connected Device doesn't support the HID SCI feature\n");
-		return;
-	}
-
 	static const uint8_t mode_val[] = {
 		BT_HIDS_SCI_MODE_DEFAULT,
 		BT_HIDS_SCI_MODE_FAST,
 		BT_HIDS_SCI_MODE_LOW_POWER,
 		BT_HIDS_SCI_MODE_FULL_RANGE,
 	};
+	static uint8_t sci_mode_idx = 0;
+	const uint8_t mode = mode_val[sci_mode_idx];
+	bool any_ok = false;
 
-	switch (mode_val[sci_mode_idx]) {
-	case BT_HIDS_SCI_MODE_DEFAULT:
-		printk("Sending SCI DEFAULT mode request\n");
-		break;
-	case BT_HIDS_SCI_MODE_FAST:
-		printk("Sending SCI FAST mode request\n");
-		break;
-	case BT_HIDS_SCI_MODE_LOW_POWER:
-		if (!bt_hogp_sci_low_power_mode_supported(&hogp)) {
-			printk("The connected Device doesn't support the SCI LOW POWER mode\n");
-			return;
+	printk("Requesting SCI mode %s on all ready devices\n", sci_mode_to_string(mode));
+
+	for (size_t i = 0; i < ARRAY_SIZE(slots); i++) {
+		struct bt_hogp *hogp = &slots[i].hogp;
+
+		if (!bt_hogp_ready_check(hogp)) {
+			continue;
 		}
-		printk("Sending SCI LOW POWER mode request\n");
-		break;
-	case BT_HIDS_SCI_MODE_FULL_RANGE:
-		printk("Sending SCI FULL RANGE mode request\n");
-		break;
-	default:
-		/* Should never get here */
-		__ASSERT(0, "Unknown SCI mode");
-		return;
+		if (!bt_hogp_sci_supported(hogp)) {
+			continue;
+		}
+
+		const struct bt_hids_info *info = bt_hogp_conn_info_val(hogp);
+
+		if (!(info->flags & BT_HIDS_SCI_SUPPORTED)) {
+			continue;
+		}
+		if (slots[i].sci_mode_requested != BT_HIDS_SCI_MODE_NONE) {
+			PRINT_PERIPH_INDEX_STR(i);
+			printk("SCI mode request already in progress, skipping\n");
+			continue;
+		}
+
+		if (mode == BT_HIDS_SCI_MODE_LOW_POWER &&
+		    !bt_hogp_sci_low_power_mode_supported(hogp)) {
+			PRINT_PERIPH_INDEX_STR(i);
+			printk("Device doesn't support SCI LOW POWER mode, skipping\n");
+			continue;
+		}
+
+		int err = bt_hogp_sci_mode_req(hogp, mode);
+
+		if (!err) {
+			any_ok = true;
+			PRINT_PERIPH_INDEX_STR(i);
+			printk("Sent %s SCI mode request to the device\n",
+			       sci_mode_to_string(mode));
+			slots[i].sci_mode_requested = mode;
+			k_work_schedule(&slots[i].sci_mode_timeout,
+					K_MSEC(SCI_MODE_CHANGE_TIMEOUT_MS));
+		} else {
+			PRINT_PERIPH_INDEX_STR(i);
+			printk("SCI mode request failed (err: %d)\n", err);
+		}
 	}
 
-	int err = bt_hogp_sci_mode_req(&hogp, mode_val[sci_mode_idx]);
-
-	if (!err) {
-		printk("Sent %s SCI mode request to the device\n",
-		       sci_mode_to_string(mode_val[sci_mode_idx]));
-		sci_mode_requested = mode_val[sci_mode_idx];
-		k_work_schedule(&sci_mode_change_timeout,
-				K_MSEC(SCI_MODE_CHANGE_TIMEOUT_MS));
-	} else {
-		printk("SCI mode request failed (err: %d)\n", err);
+	if (!any_ok) {
+		printk("No HID device accepted SCI mode change\n");
+		return;
 	}
 
 	sci_mode_idx = (sci_mode_idx + 1) % ARRAY_SIZE(mode_val);
@@ -1408,6 +1421,10 @@ int main(void)
 		k_timer_init(&slots[i].cont_report_rx_timer, cont_report_rx_timer_expire, NULL);
 		bt_hogp_init(&slots[i].hogp, &hogp_init_params);
 		k_work_init(&slots[i].hids_ready_work, hids_on_ready);
+#if defined(CONFIG_BT_HOGP_SCI)
+		k_work_init_delayable(&slots[i].sci_mode_timeout, sci_mode_change_timeout_fn);
+		slots[i].sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
+#endif
 	}
 
 	err = bt_conn_auth_cb_register(&conn_auth_callbacks);
