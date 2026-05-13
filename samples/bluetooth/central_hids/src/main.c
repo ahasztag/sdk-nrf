@@ -129,6 +129,10 @@ BUILD_ASSERT(CONFIG_CENTRAL_HIDS_SCI_SUPERVISION_TIMEOUT_10MS * 10000ULL >
 #define PERIPH_SLOT_INDEX(slot) 0
 #endif
 
+#if PERIPHERAL_SLOT_COUNT > 1
+#define KEY_ADDITIONAL_FUNCTIONS_RESUME_SCAN DK_BTN1_MSK
+#endif
+
 struct peripheral_slot {
 	struct bt_conn *conn;
 	struct bt_hogp hogp;
@@ -595,7 +599,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	bt_conn_unref(slot->conn);
 	slot->conn = NULL;
 
+#if PERIPHERAL_SLOT_COUNT == 1
 	scanning_continue();
+#endif
 }
 
 static void security_changed(struct bt_conn *conn, bt_security_t level,
@@ -956,7 +962,9 @@ static void hids_on_ready(struct k_work *work)
 		printk("SCI mode subscribe error (%d)\n", err);
 	}
 #endif
+#if PERIPHERAL_SLOT_COUNT == 1
 	scanning_continue();
+#endif
 }
 
 static void hogp_prep_fail_cb(struct bt_hogp *hogp, int err)
@@ -1280,6 +1288,15 @@ static void button_handler(uint32_t button_state, uint32_t has_changed)
 	uint32_t button = button_state & has_changed;
 
 	if (btn_additional_functions_active) {
+#if PERIPHERAL_SLOT_COUNT > 1
+		if (button & KEY_ADDITIONAL_FUNCTIONS_RESUME_SCAN) {
+			if (active_connection_count() < PERIPHERAL_SLOT_COUNT) {
+				scanning_continue();
+			} else {
+				printk("All peripheral slots in use; scanning not started\n");
+			}
+		}
+#endif
 #if defined(CONFIG_BT_HOGP_SCI)
 		if (button & KEY_ADDITIONAL_FUNCTIONS_SCI_MODE_NEXT) {
 			button_sci_mode_next();
@@ -1317,13 +1334,19 @@ static void button_handler(uint32_t button_state, uint32_t has_changed)
 		btn_additional_functions_active = true;
 		printk("Additional button functions activated.\n");
 		if (IS_ENABLED(CONFIG_SOC_SERIES_NRF54H) || IS_ENABLED(CONFIG_SOC_SERIES_NRF54L)) {
+#if PERIPHERAL_SLOT_COUNT > 1
+			printk("Button 1: Resume scanning if a peripheral slot is free\n");
+#endif
 #if defined(CONFIG_BT_HOGP_SCI)
-			printk("Button 1: Next SCI mode\n");
+			printk("Button 2: Next SCI mode\n");
 #else
 			printk("No additional button functions available\n");
 #endif
 			printk("Button 3: Exit additional button functions\n");
 		} else {
+#if PERIPHERAL_SLOT_COUNT > 1
+			printk("Button 1: Resume scanning if a peripheral slot is free\n");
+#endif
 #if defined(CONFIG_BT_HOGP_SCI)
 			printk("Button 2: Next SCI mode\n");
 #else
