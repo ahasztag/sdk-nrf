@@ -4,6 +4,25 @@
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
 
+menu "Nordic Bluetooth LE Central HIDS sample"
+
+config SAMPLE_BT_CENTRAL_HIDS_PERIPHERAL_COUNT
+	int "Maximum simultaneous HID peripheral connections"
+	range 1 2
+	default 1
+	help
+	  Number of HID GATT server peripherals this central may connect to at the
+	  same time. When set to 2, Bluetooth pairing/connection limits are
+	  raised accordingly (see default BT_MAX_CONN and BT_MAX_PAIRED below).
+
+endmenu
+
+config BT_MAX_CONN
+	default 2 if SAMPLE_BT_CENTRAL_HIDS_PERIPHERAL_COUNT = 2
+
+config BT_MAX_PAIRED
+	default 2 if SAMPLE_BT_CENTRAL_HIDS_PERIPHERAL_COUNT = 2
+
 config SETTINGS
 	default y
 
