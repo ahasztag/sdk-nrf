@@ -97,7 +97,7 @@ static enum bt_hids_sci_mode_value sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
 #define CONTINUOUS_REPORT_RECEIVING_EXIT_THRESHOLD_US 500000
 
 /** The statistics for the continuous report receiving mode will be printed every 500 reports. */
-#define CONTINUOUS_REPORT_RECEIVING_PRINT_INFO_RATE 500
+#define CONTINUOUS_REPORT_RECEIVING_PRINT_INFO_RATE 2000
 
 /**
  * Reports are considered to be within the expected window if the difference between
@@ -494,11 +494,32 @@ static void le_param_updated(struct bt_conn *conn, uint16_t interval,
 		cont_report_rx_interval_us);
 }
 
+static void conn_rate_changed(struct bt_conn *conn, uint8_t status,
+			      const struct bt_conn_le_conn_rate_changed *params)
+{
+	ARG_UNUSED(conn);
+	ARG_UNUSED(status);
+	ARG_UNUSED(params);
+
+	if (conn != default_conn) {
+		return;
+	}
+
+	if (hogp_notify_cnt > 0) {
+		cont_rx_stats_print_thread_push(cont_report_rx_previous_report_cycles);
+	}
+	cont_report_rx_data_reset();
+	cont_report_rx_conn_interval_us = params->interval_us;
+	printk("Connection interval updated to %u us\n",
+		cont_report_rx_conn_interval_us);
+}
+
 BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected        = connected,
 	.disconnected     = disconnected,
 	.security_changed = security_changed,
 	.le_param_updated = le_param_updated,
+	.conn_rate_changed = conn_rate_changed,
 };
 
 static void scan_init(void)
@@ -928,6 +949,7 @@ static int set_default_conn_rate(void)
 			return -EINVAL;
 		}
 	}
+	printk("Min conn interval: %u us\n", local_min_interval_us);
 
 	const struct bt_conn_le_conn_rate_param params = {
 		.interval_min_125us = interval_min_125us,
