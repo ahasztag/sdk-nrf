@@ -86,10 +86,8 @@ static enum bt_hids_sci_mode_value sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
 #define CONT_REPORT_RX_ENTRANCE_SAMPLE_REPORTS 10
 #define CONT_REPORT_RX_ENTRANCE_MAX_SPAN_CONN_INTERVALS 50
 
-#if PERIPHERAL_SLOT_COUNT == 1
-#define CONTINUOUS_REPORT_RECEIVING_ENTRANCE_THRESHOLD_US \
-	(cont_report_rx_interval_us * CONT_REPORT_RX_ENTRANCE_MAX_SPAN_CONN_INTERVALS)
-#endif
+#define CONTINUOUS_REPORT_RECEIVING_ENTRANCE_THRESHOLD_US(SLOT) \
+	((SLOT)->cont_report_rx_interval_us * CONT_REPORT_RX_ENTRANCE_MAX_SPAN_CONN_INTERVALS)
 
 /**
  * Exit from continuous receive mode: if no report is received for
@@ -129,12 +127,23 @@ static enum bt_hids_sci_mode_value sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
 #define PERIPH_SLOT_INDEX(slot) ((size_t)((slot) - (slots)))
 #else
 #define PRINT_PERIPH_INDEX_STR(idx)
+#define PERIPH_SLOT_INDEX(slot) 0
 #endif
 
 struct peripheral_slot {
 	struct bt_conn *conn;
 	struct bt_hogp hogp;
 	struct k_work hids_ready_work;
+	struct k_timer cont_report_rx_timer;
+	atomic_t cont_report_rx_on;
+	uint32_t cont_report_rx_previous_report_cycles;
+	uint32_t cont_report_rx_interval_us;
+	uint32_t cont_report_rx_max_interval_us;
+	uint32_t cont_report_rx_min_interval_us;
+	uint32_t cont_report_rx_above_window_count;
+	uint32_t cont_report_rx_below_window_count;
+	uint32_t hogp_notify_batch_start_cycles;
+	uint32_t hogp_notify_cnt;
 };
 
 static struct peripheral_slot slots[PERIPHERAL_SLOT_COUNT];
@@ -142,20 +151,8 @@ static struct bt_conn *auth_conn;
 static uint8_t capslock_state;
 static bool btn_additional_functions_active;
 
-#if PERIPHERAL_SLOT_COUNT == 1
-
-static atomic_t cont_report_rx_on = ATOMIC_INIT(0);
-static uint32_t cont_report_rx_previous_report_cycles;
-static uint32_t cont_report_rx_interval_us;
-static uint32_t cont_report_rx_max_interval_us;
-static uint32_t cont_report_rx_min_interval_us = UINT32_MAX;
-static uint32_t cont_report_rx_above_window_count;
-static uint32_t cont_report_rx_below_window_count;
-
-static uint32_t hogp_notify_batch_start_cycles;
-static uint32_t hogp_notify_cnt;
-
 struct cont_report_rx_data {
+	size_t peripheral_idx;
 	int notify_cnt;
 	uint32_t report_interval_us;
 	uint32_t total_time_us;
@@ -165,10 +162,11 @@ struct cont_report_rx_data {
 	uint32_t below_window_count;
 };
 
-#endif /* PERIPHERAL_SLOT_COUNT == 1 */
 
 static void hids_on_ready(struct k_work *work);
 
+static void sci_mode_change_timeout_fn(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(sci_mode_change_timeout, sci_mode_change_timeout_fn);
 
 static struct peripheral_slot *slot_by_conn(struct bt_conn *conn)
 {
@@ -266,10 +264,6 @@ static void try_connect(struct bt_scan_device_info *device_info,
 }
 
 #if PERIPHERAL_SLOT_COUNT == 1
-
-static void sci_mode_change_timeout_fn(struct k_work *work);
-static K_WORK_DELAYABLE_DEFINE(sci_mode_change_timeout, sci_mode_change_timeout_fn);
-
 static void cont_report_rx_timer_expire(struct k_timer *timer);
 K_TIMER_DEFINE(cont_report_rx_timer, cont_report_rx_timer_expire, NULL);
 
@@ -277,16 +271,16 @@ K_THREAD_STACK_DEFINE(cont_report_rx_stats_print_stack,
 		      CONT_REPORT_RX_STATS_PRINT_STACK_SIZE);
 static struct k_thread cont_report_rx_stats_print_thread_data;
 
-static void cont_report_rx_data_reset(void)
+static void cont_report_rx_data_reset(struct peripheral_slot *slot)
 {
-	cont_report_rx_max_interval_us = 0;
-	cont_report_rx_min_interval_us = UINT32_MAX;
-	cont_report_rx_above_window_count = 0;
-	cont_report_rx_below_window_count = 0;
+	slot->cont_report_rx_max_interval_us = 0;
+	slot->cont_report_rx_min_interval_us = UINT32_MAX;
+	slot->cont_report_rx_above_window_count = 0;
+	slot->cont_report_rx_below_window_count = 0;
 
-	cont_report_rx_previous_report_cycles = 0;
-	hogp_notify_batch_start_cycles = 0;
-	hogp_notify_cnt = 0;
+	slot->cont_report_rx_previous_report_cycles = 0;
+	slot->hogp_notify_batch_start_cycles = 0;
+	slot->hogp_notify_cnt = 0;
 }
 
 K_MSGQ_DEFINE(cont_report_rx_dataq, sizeof(struct cont_report_rx_data),
@@ -304,7 +298,9 @@ static void cont_report_rx_stats_print_thread_fn(void *p1, void *p2, void *p3)
 	for (;;) {
 		k_msgq_get(&cont_report_rx_dataq, &msg, K_FOREVER);
 
-		printk("\nReceived %d reports, in %d us\n", msg.notify_cnt, msg.total_time_us);
+		printk("\n")
+		PRINT_PERIPH_INDEX_STR(msg.peripheral_idx);
+		printk("Received %d reports, in %d us\n", msg.notify_cnt, msg.total_time_us);
 		if (msg.notify_cnt > 1) {
 			avg_interval_us = msg.total_time_us / (msg.notify_cnt - 1);
 			printk("Average report interval: %u us, max %u us, min %u us\n",
@@ -333,17 +329,19 @@ static void cont_rx_stats_print_thread_start(void)
 	k_thread_name_set(&cont_report_rx_stats_print_thread_data, "cont_report_rx_stats_print");
 }
 
-static void cont_rx_stats_print_thread_push(uint32_t batch_end_cycles)
+static void cont_rx_stats_print_thread_push(struct peripheral_slot *slot,
+					    uint32_t batch_end_cycles)
 {
 	struct cont_report_rx_data cont_rx_stats_msg = {
-		.notify_cnt = hogp_notify_cnt,
-		.report_interval_us = cont_report_rx_interval_us,
+		.peripheral_idx = PERIPH_SLOT_INDEX(slot),
+		.notify_cnt = slot->hogp_notify_cnt,
+		.report_interval_us = slot->cont_report_rx_interval_us,
 		.total_time_us = k_cyc_to_us_floor32(batch_end_cycles
-						     - hogp_notify_batch_start_cycles),
-		.max_interval_us = cont_report_rx_max_interval_us,
-		.min_interval_us = cont_report_rx_min_interval_us,
-		.above_window_count = cont_report_rx_above_window_count,
-		.below_window_count = cont_report_rx_below_window_count,
+						     - slot->hogp_notify_batch_start_cycles),
+		.max_interval_us = slot->cont_report_rx_max_interval_us,
+		.min_interval_us = slot->cont_report_rx_min_interval_us,
+		.above_window_count = slot->cont_report_rx_above_window_count,
+		.below_window_count = slot->cont_report_rx_below_window_count,
 	};
 
 	if (k_msgq_put(&cont_report_rx_dataq, &cont_rx_stats_msg, K_NO_WAIT) != 0) {
@@ -353,24 +351,25 @@ static void cont_rx_stats_print_thread_push(uint32_t batch_end_cycles)
 
 static void cont_report_rx_timer_expire(struct k_timer *timer)
 {
-	ARG_UNUSED(timer);
+	struct peripheral_slot *slot =
+		CONTAINER_OF(timer, struct peripheral_slot, cont_report_rx_timer);
 
-	if (hogp_notify_cnt > 0) {
-		cont_rx_stats_print_thread_push(cont_report_rx_previous_report_cycles);
+	if (slot->hogp_notify_cnt > 0) {
+		cont_rx_stats_print_thread_push(slot, slot->cont_report_rx_previous_report_cycles);
 	}
 
-	atomic_set(&cont_report_rx_on, 0);
-	printk("\nContinuous report receiving disabled due to prolonged inactivity\n");
+	atomic_set(&slot->cont_report_rx_on, 0);
+	printk("\n")
+	PRINT_PERIPH_INDEX_STR(PERIPH_SLOT_INDEX(slot));
+	printk("Continuous report receiving disabled due to prolonged inactivity\n");
 }
 
-static void cont_report_rx_timer_restart(void)
+static void cont_report_rx_timer_restart(struct peripheral_slot *slot)
 {
-	k_timer_start(&cont_report_rx_timer,
+	k_timer_start(&slot->cont_report_rx_timer,
 		      K_USEC(CONTINUOUS_REPORT_RECEIVING_EXIT_THRESHOLD_US),
 		      K_NO_WAIT);
 }
-
-#endif /* PERIPHERAL_SLOT_COUNT == 1 */
 
 static void scan_filter_match(struct bt_scan_device_info *device_info,
 			      struct bt_scan_filter_match *filter_match,
@@ -541,7 +540,6 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 
 	printk("Connected: %s\n", addr);
 
-#if PERIPHERAL_SLOT_COUNT == 1
 	if (slot) {
 		struct bt_conn_info conn_info;
 
@@ -551,14 +549,13 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 			/** Currently connection interval is equal to expected report interval
 			 *  This will however not be the case if subrating is enabled.
 			 */
-			cont_report_rx_interval_us = conn_info.le.interval_us;
-			printk("Expected report interval: %u us\n", cont_report_rx_interval_us);
+			slot->cont_report_rx_interval_us = conn_info.le.interval_us;
+			printk("Expected report interval: %u us\n", slot->cont_report_rx_interval_us);
 		} else {
 			printk("Failed to get connection interval\n");
-			cont_report_rx_interval_us = 0;
+			slot->cont_report_rx_interval_us = 0;
 		}
 	}
-#endif
 
 	err = bt_conn_set_security(conn, BT_SECURITY_L2);
 	if (err) {
@@ -586,11 +583,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		return;
 	}
 
-#if PERIPHERAL_SLOT_COUNT == 1
-	atomic_set(&cont_report_rx_on, 0);
-	k_timer_stop(&cont_report_rx_timer);
-	cont_report_rx_data_reset();
-#endif
+	atomic_set(&slot->cont_report_rx_on, 0);
+	k_timer_stop(&slot->cont_report_rx_timer);
+	cont_report_rx_data_reset(slot);
 
 	if (bt_hogp_assign_check(&slot->hogp)) {
 		printk("HIDS client active - releasing");
@@ -620,7 +615,6 @@ static void security_changed(struct bt_conn *conn, bt_security_t level,
 	}
 }
 
-#if PERIPHERAL_SLOT_COUNT == 1
 static void le_param_updated(struct bt_conn *conn, uint16_t interval,
 			      uint16_t latency, uint16_t timeout)
 {
@@ -633,15 +627,15 @@ static void le_param_updated(struct bt_conn *conn, uint16_t interval,
 		return;
 	}
 
-	if (hogp_notify_cnt > 0) {
-		cont_rx_stats_print_thread_push(cont_report_rx_previous_report_cycles);
+	if (slot->hogp_notify_cnt > 0) {
+		cont_rx_stats_print_thread_push(slot, slot->cont_report_rx_previous_report_cycles);
 	}
-	cont_report_rx_data_reset();
-	cont_report_rx_interval_us = BT_CONN_INTERVAL_TO_US(interval);
+	cont_report_rx_data_reset(slot);
+	slot->cont_report_rx_interval_us = BT_CONN_INTERVAL_TO_US(interval);
+	PRINT_PERIPH_INDEX_STR(PERIPH_SLOT_INDEX(slot));
 	printk("Connection interval updated to %u us\n",
-		cont_report_rx_interval_us);
+	       slot->cont_report_rx_interval_us);
 }
-#endif
 
 static void conn_rate_changed(struct bt_conn *conn, uint8_t status,
 			      const struct bt_conn_le_conn_rate_changed *params)
@@ -705,27 +699,26 @@ static uint8_t hogp_notify_cb(struct bt_hogp *hogp,
 			     uint8_t err,
 			     const uint8_t *data)
 {
-#if PERIPHERAL_SLOT_COUNT == 1
-
+	struct peripheral_slot *slot = CONTAINER_OF(hogp, struct peripheral_slot, hogp);
 	bool first_in_batch = false;
 	uint32_t now = k_cycle_get_32();
-	uint32_t last = cont_report_rx_previous_report_cycles;
+	uint32_t last = slot->cont_report_rx_previous_report_cycles;
 
-	cont_report_rx_previous_report_cycles = now;
+	slot->cont_report_rx_previous_report_cycles = now;
 
 	if (!data) {
 		return BT_GATT_ITER_STOP;
 	}
 
-	if (hogp_notify_cnt == 0U) {
+	if (slot->hogp_notify_cnt == 0U) {
 		/* First report in the batch */
-		hogp_notify_batch_start_cycles = now;
+		slot->hogp_notify_batch_start_cycles = now;
 		first_in_batch = true;
 	}
 
-	hogp_notify_cnt++;
+	slot->hogp_notify_cnt++;
 
-	if (atomic_get(&cont_report_rx_on)) {
+	if (atomic_get(&slot->cont_report_rx_on)) {
 		if (first_in_batch) {
 			/* Nothing to calculate for the first report in the batch */
 			return BT_GATT_ITER_CONTINUE;
@@ -733,67 +726,61 @@ static uint8_t hogp_notify_cb(struct bt_hogp *hogp,
 
 		uint32_t time_elapsed = k_cyc_to_us_floor32(now - last);
 
-		if (time_elapsed > cont_report_rx_max_interval_us) {
-			cont_report_rx_max_interval_us = time_elapsed;
+		if (time_elapsed > slot->cont_report_rx_max_interval_us) {
+			slot->cont_report_rx_max_interval_us = time_elapsed;
 		}
-		if (time_elapsed < cont_report_rx_min_interval_us) {
-			cont_report_rx_min_interval_us = time_elapsed;
+		if (time_elapsed < slot->cont_report_rx_min_interval_us) {
+			slot->cont_report_rx_min_interval_us = time_elapsed;
 		}
-		if (cont_report_rx_interval_us > 0) {
-			if (time_elapsed > cont_report_rx_interval_us
+		if (slot->cont_report_rx_interval_us > 0) {
+			if (time_elapsed > slot->cont_report_rx_interval_us
 					    + CONTINUOUS_REPORT_RECEIVING_WINDOW_DELTA_US) {
-				cont_report_rx_above_window_count++;
+				slot->cont_report_rx_above_window_count++;
 			}
-			if (time_elapsed < cont_report_rx_interval_us
+			if (time_elapsed < slot->cont_report_rx_interval_us
 						   - CONTINUOUS_REPORT_RECEIVING_WINDOW_DELTA_US) {
-				cont_report_rx_below_window_count++;
+				slot->cont_report_rx_below_window_count++;
 			}
 		}
 
-		if (hogp_notify_cnt %
+		if (slot->hogp_notify_cnt %
 		    CONTINUOUS_REPORT_RECEIVING_PRINT_INFO_RATE == 0) {
 			/*
 			 * Offload printk so it does not perturb notification timing.
 			 */
-			cont_rx_stats_print_thread_push(now);
-			cont_report_rx_data_reset();
+			cont_rx_stats_print_thread_push(slot, now);
+			cont_report_rx_data_reset(slot);
 		}
 
-		cont_report_rx_timer_restart();
+		cont_report_rx_timer_restart(slot);
 		return BT_GATT_ITER_CONTINUE;
 	}
 
-	if (hogp_notify_cnt % CONT_REPORT_RX_ENTRANCE_SAMPLE_REPORTS == 0) {
+	if (slot->hogp_notify_cnt % CONT_REPORT_RX_ENTRANCE_SAMPLE_REPORTS == 0) {
 		/*
 		 * Note: theoretically we could hit this condition if a notification is
 		 * received right after the counter wrapped around, but this is extremely
 		 * unlikely and the consequences are negligible. No extra check keeps the
 		 * code simpler.
 		 */
-		if (k_cyc_to_us_floor32(now - hogp_notify_batch_start_cycles)
-		    < CONTINUOUS_REPORT_RECEIVING_ENTRANCE_THRESHOLD_US) {
-			atomic_set(&cont_report_rx_on, 1);
+		if (k_cyc_to_us_floor32(now - slot->hogp_notify_batch_start_cycles)
+		    < CONTINUOUS_REPORT_RECEIVING_ENTRANCE_THRESHOLD_US(slot)) {
+			atomic_set(&slot->cont_report_rx_on, 1);
+			PRINT_PERIPH_INDEX_STR(PERIPH_SLOT_INDEX(slot));
 			printk("Continuous report receiving enabled due to"
 			       " short time interval between notifications.\n"
 			       "Expected report interval: %u us\n",
-			       cont_report_rx_interval_us);
-			cont_report_rx_data_reset();
-			cont_report_rx_timer_restart();
+			       slot->cont_report_rx_interval_us);
+			cont_report_rx_data_reset(slot);
+			cont_report_rx_timer_restart(slot);
 			return BT_GATT_ITER_CONTINUE;
 		}
 
-		hogp_notify_cnt = 0;
+		slot->hogp_notify_cnt = 0;
 	}
 
-#endif /* PERIPHERAL_SLOT_COUNT == 1 */
-
-	struct peripheral_slot *slot = CONTAINER_OF(hogp, struct peripheral_slot, hogp);
 	uint8_t i;
 	uint8_t size = bt_hogp_rep_size(rep);
-
-	if (!data) {
-		return BT_GATT_ITER_STOP;
-	}
 
 	PRINT_PERIPH_INDEX_STR(PERIPH_SLOT_INDEX(slot));
 
@@ -1413,11 +1400,12 @@ int main(void)
 
 	printk("Starting Bluetooth Central HIDS sample\n");
 
-#if PERIPHERAL_SLOT_COUNT == 1
 	cont_rx_stats_print_thread_start();
-#endif
 
 	for (size_t i = 0; i < ARRAY_SIZE(slots); i++) {
+		atomic_set(&slots[i].cont_report_rx_on, 0);
+		slots[i].cont_report_rx_min_interval_us = UINT32_MAX;
+		k_timer_init(&slots[i].cont_report_rx_timer, cont_report_rx_timer_expire, NULL);
 		bt_hogp_init(&slots[i].hogp, &hogp_init_params);
 		k_work_init(&slots[i].hids_ready_work, hids_on_ready);
 	}
