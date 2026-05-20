@@ -125,6 +125,14 @@ User interface
       LED 3:
          Indicates if an NFC field is present.
 
+HID Shorter Connection Intervals (SCI)
+--------------------------------------
+
+If the sample is built with ``-DFILE_SUFFIX=hid_sci``, support for HID Shorter Connection Intervals (SCI) is enabled.
+This feature allows the device to enter a specific HID SCI mode when requested by the central.
+The HID SCI modes are sets of connection parameters which can be used to optimize the connection for the specific use case.
+For example, the FAST mode is used to achieve the shortest connection intervals, allowing for minimum latency and maximum throughput.
+
 Configuration
 *************
 
@@ -153,6 +161,8 @@ Building and running
 .. |ipc_radio_dir| replace:: :file:`sysbuild/ipc_radio`
 
 .. include:: /includes/ipc_radio_conf.txt
+
+To build the sample with HID SCI support, build with ``-DFILE_SUFFIX=hid_sci``
 
 Testing
 =======

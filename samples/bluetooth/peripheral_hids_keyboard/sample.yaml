@@ -39,3 +39,16 @@ tests:
         - "Starting Bluetooth Peripheral HIDS keyboard sample"
         - "Bluetooth initialized"
     timeout: 15
+  sample.bluetooth.peripheral_hids_keyboard.hid_sci:
+    harness: console
+    extra_args: FILE_SUFFIX=hid_sci
+    integration_platforms:
+      - nrf54l15dk/nrf54l05/cpuapp
+      - nrf54lm20dk/nrf54lm20a/cpuapp
+      - nrf54lm20dk/nrf54lm20b/cpuapp
+      - nrf54lv10dk/nrf54lv10a/cpuapp
+    platform_allow:
+      - nrf54l15dk/nrf54l05/cpuapp
+      - nrf54lm20dk/nrf54lm20a/cpuapp
+      - nrf54lm20dk/nrf54lm20b/cpuapp
+      - nrf54lv10dk/nrf54lv10a/cpuapp
