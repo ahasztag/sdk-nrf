@@ -50,6 +50,7 @@ Continuous report receiving
 
 The continuous report receiving feature is enabled by default.
 You can toggle it off using the :option:`CONFIG_SAMPLE_BT_CENTRAL_HIDS_CONTINUOUS_REPORT_RX` Kconfig option.
+Currently, it is only available if :kconfig:option:`CONFIG_SAMPLE_BT_CENTRAL_HIDS_PERIPHERAL_COUNT` is set to ``1`` (only one peripheral can be connected at a time).
 
 If the connected device sends GATT notifications with HID input reports fast enough, the sample automatically enters the continuous report receiving mode.
 
@@ -92,6 +93,12 @@ User interface
         In this mode, the buttons have different functionalities than in the normal mode.
         The available functionalities depend on the sample configuration and are printed in the terminal window after button press.
 
+        Currently, the following functionalities are available:
+
+        * **Button 1**: Resume scanning.
+        * **Button 4**: Exit the "Alternative button functions" mode.
+
+
    .. group-tab:: nRF54 DKs
 
       Button 0:
@@ -115,6 +122,11 @@ User interface
         Switch to the "Alternative button functions" mode.
         In this mode, the buttons have different functionalities than in the normal mode.
         The available functionalities depend on the sample configuration and are printed in the terminal window after button press.
+
+        Currently, the following functionalities are available:
+
+        * **Button 0**: Resume scanning.
+        * **Button 3**: Exit the "Alternative button functions" mode.
 
 Configuration
 *************
