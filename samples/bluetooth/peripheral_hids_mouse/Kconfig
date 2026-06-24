@@ -53,6 +53,14 @@ config SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING_PREPARE_DISTANCE_US
 	  The default value 400 us was arbitrarily chosen, so that the preparation fits
 	  in short intervals below 500 us.
 
+config SAMPLE_BT_HIDS_MULTIPLE_SERVICES
+	bool "Register multiple HID Service instances"
+	depends on BT_HIDS_SCI
+	help
+	  Register a second HID Service instance to exercise multiple-instance HID SCI support.
+	  The primary instance keeps the full mouse functionality; the extra instance exposes
+	  a movement-only report that mirrors cursor updates for verification on the central.
+
 endmenu
 
 source "Kconfig.zephyr"

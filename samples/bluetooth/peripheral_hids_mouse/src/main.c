@@ -85,6 +85,18 @@ BT_HIDS_DEF(hids_obj,
 	    INPUT_REP_MOVEMENT_LEN,
 	    INPUT_REP_MEDIA_PLAYER_LEN);
 
+#if CONFIG_SAMPLE_BT_HIDS_MULTIPLE_SERVICES
+/* Extra HID Service instance: movement-only report for multi-instance testing. */
+#define EXTRA_INPUT_REP_MOVEMENT_LEN 3
+#define EXTRA_INPUT_REP_MOVEMENT_INDEX 0
+#define EXTRA_INPUT_REP_REF_MOVEMENT_ID  2
+
+BT_HIDS_DEF(hids_obj_extra, EXTRA_INPUT_REP_MOVEMENT_LEN);
+
+BUILD_ASSERT(!IS_ENABLED(CONFIG_SAMPLE_BT_HIDS_MULTIPLE_SERVICES) ||
+	     CONFIG_BT_HIDS_SCI_MAX_INSTANCE_COUNT >= 2);
+#endif
+
 static struct k_work hids_work;
 struct mouse_pos {
 	int16_t x_val;
@@ -399,9 +411,18 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	err = bt_hids_connected(&hids_obj, conn);
 
 	if (err) {
-		printk("Failed to notify HID service about connection\n");
+		printk("Failed to notify primary HID service about connection\n");
 		return;
 	}
+
+#if CONFIG_SAMPLE_BT_HIDS_MULTIPLE_SERVICES
+	err = bt_hids_connected(&hids_obj_extra, conn);
+
+	if (err) {
+		printk("Failed to notify extra HID service about connection\n");
+		return;
+	}
+#endif
 
 	insert_conn_object(conn);
 
@@ -423,8 +444,16 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	err = bt_hids_disconnected(&hids_obj, conn);
 
 	if (err) {
-		printk("Failed to notify HID service about disconnection\n");
+		printk("Failed to notify primary HID service about disconnection\n");
 	}
+
+#if CONFIG_SAMPLE_BT_HIDS_MULTIPLE_SERVICES
+	err = bt_hids_disconnected(&hids_obj_extra, conn);
+
+	if (err) {
+		printk("Failed to notify extra HID service about disconnection\n");
+	}
+#endif
 
 	for (size_t i = 0; i < ARRAY_SIZE(conn_mode); i++) {
 		if (conn_mode[i].conn == conn) {
@@ -757,6 +786,53 @@ static void hid_init(void)
 
 	err = bt_hids_init(&hids_obj, &hids_init_param);
 	__ASSERT(err == 0, "HIDS initialization failed\n");
+
+#if CONFIG_SAMPLE_BT_HIDS_MULTIPLE_SERVICES
+	{
+		struct bt_hids_init_param extra_hids_init_param = { 0 };
+		struct bt_hids_inp_rep *extra_inp_rep;
+		static const uint8_t extra_report_map[] = {
+			0x05, 0x01,     /* Usage Page (Generic Desktop) */
+			0x09, 0x02,     /* Usage (Mouse) */
+			0xA1, 0x01,     /* Collection (Application) */
+			0x85, EXTRA_INPUT_REP_REF_MOVEMENT_ID, /* Report Id 2 */
+			0x09, 0x01,     /* Usage (Pointer) */
+			0xA1, 0x00,     /* Collection (Physical) */
+			0x75, 0x0C,     /* Report Size (12) */
+			0x95, 0x02,     /* Report Count (2) */
+			0x05, 0x01,     /* Usage Page (Generic Desktop) */
+			0x09, 0x30,     /* Usage (X) */
+			0x09, 0x31,     /* Usage (Y) */
+			0x16, 0x01, 0xF8, /* Logical minimum (-2047) */
+			0x26, 0xFF, 0x07, /* Logical maximum (2047) */
+			0x81, 0x06,     /* Input (Data, Variable, Relative) */
+			0xC0,             /* End Collection (Physical) */
+			0xC0,             /* End Collection (Application) */
+		};
+		static const uint8_t extra_movement_mask[DIV_ROUND_UP(EXTRA_INPUT_REP_MOVEMENT_LEN,
+								    8)] = {0};
+
+		extra_hids_init_param.rep_map.data = extra_report_map;
+		extra_hids_init_param.rep_map.size = sizeof(extra_report_map);
+		extra_hids_init_param.info.bcd_hid = BASE_USB_HID_SPEC_VERSION;
+		extra_hids_init_param.info.b_country_code = 0x00;
+		extra_hids_init_param.info.flags = (BT_HIDS_REMOTE_WAKE |
+						    BT_HIDS_NORMALLY_CONNECTABLE);
+		extra_inp_rep = &extra_hids_init_param.inp_rep_group_init.reports[0];
+		extra_inp_rep->size = EXTRA_INPUT_REP_MOVEMENT_LEN;
+		extra_inp_rep->id = EXTRA_INPUT_REP_REF_MOVEMENT_ID;
+		extra_inp_rep->rep_mask = extra_movement_mask;
+		extra_hids_init_param.inp_rep_group_init.cnt++;
+		extra_hids_init_param.pm_evt_handler = hids_pm_evt_handler;
+		if (IS_ENABLED(CONFIG_BT_HIDS_SCI)) {
+			extra_hids_init_param.conn_cp_evt_handler = conn_cp_evt_handler;
+		}
+
+		err = bt_hids_init(&hids_obj_extra, &extra_hids_init_param);
+		__ASSERT(err == 0, "Extra HIDS initialization failed\n");
+		printk("Extra HID Service instance registered\n");
+	}
+#endif
 }
 
 #if CONFIG_SAMPLE_BT_HIDS_CONTINUOUS_REPORT_SENDING
@@ -811,6 +887,17 @@ static int mouse_movement_send_single(int16_t x_delta, int16_t y_delta,
 						    INPUT_REP_MOVEMENT_INDEX,
 						    buffer, sizeof(buffer), report_sent_cb,
 						    user_data);
+#if CONFIG_SAMPLE_BT_HIDS_MULTIPLE_SERVICES
+		if (!err) {
+			int extra_err = bt_hids_inp_rep_send_userdata(
+				&hids_obj_extra, mode->conn, EXTRA_INPUT_REP_MOVEMENT_INDEX,
+				buffer, sizeof(buffer), NULL, NULL);
+
+			if (extra_err) {
+				printk("Failed to send extra HID service report: %d\n", extra_err);
+			}
+		}
+#endif
 	}
 
 	if (err) {

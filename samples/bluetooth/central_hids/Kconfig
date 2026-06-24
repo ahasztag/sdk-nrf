@@ -42,6 +42,14 @@ config SAMPLE_BT_CENTRAL_HIDS_PERIPHERAL_COUNT
 	  same time. When set to 2, Bluetooth pairing/connection limits are
 	  raised accordingly (see default BT_MAX_CONN and BT_MAX_PAIRED in this file).
 
+config SAMPLE_BT_HIDS_MULTIPLE_SERVICES
+	bool "Discover multiple HID Service instances on one peripheral"
+	depends on BT_HOGP_SCI
+	help
+	  Discover and use every HID Service instance exposed by a connected peripheral.
+	  Intended for testing multiple-instance HID SCI support together with the
+	  :ref:`peripheral_hids_mouse` sample built with the same option enabled.
+
 configdefault BT_MAX_CONN
 	default SAMPLE_BT_CENTRAL_HIDS_PERIPHERAL_COUNT
 

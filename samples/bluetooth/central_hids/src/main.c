@@ -120,6 +120,13 @@ enum button_functions_mode {
 
 #define HID_SCI_MODE_CHANGE_TIMEOUT_MS 10000
 
+#define HIDS_INSTANCE_COUNT (IS_ENABLED(CONFIG_SAMPLE_BT_HIDS_MULTIPLE_SERVICES) ? 2 : 1)
+
+#if IS_ENABLED(CONFIG_SAMPLE_BT_HIDS_MULTIPLE_SERVICES)
+BUILD_ASSERT(HIDS_INSTANCE_COUNT == 2,
+	     "Multiple HID services sample expects two instances");
+#endif
+
 #ifdef CONFIG_BT_HOGP_SCI
 
 BUILD_ASSERT(CONFIG_SAMPLE_CENTRAL_HIDS_SCI_SUBRATE_MAX *
@@ -138,10 +145,12 @@ BUILD_ASSERT(CONFIG_SAMPLE_CENTRAL_HIDS_SCI_SUPERVISION_TIMEOUT_10MS * 10000ULL 
 
 struct peripheral_slot {
 	struct bt_conn *conn;
-	struct bt_hogp hogp;
-	struct k_work hids_ready_work;
-	enum bt_hids_sci_mode_value sci_mode_requested;
+	struct bt_hogp hogp[HIDS_INSTANCE_COUNT];
+	uint8_t hids_instance_count;
+	uint8_t hids_ready_count;
+	uint8_t sci_mode_notify_count;
 	struct k_work_delayable sci_mode_timeout;
+	enum bt_hids_sci_mode_value sci_mode_requested;
 };
 
 struct cont_rx_peripheral_slot {
@@ -165,7 +174,26 @@ static struct bt_conn *auth_conn;
 static uint8_t capslock_state;
 static enum button_functions_mode button_functions_mode = BUTTON_FUNCTIONS_MODE_DEFAULT;
 
-static void hids_on_ready(struct k_work *work);
+static struct peripheral_slot *slot_by_hogp(const struct bt_hogp *hogp)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(slots); i++) {
+		for (size_t j = 0; j < HIDS_INSTANCE_COUNT; j++) {
+			if (hogp == &slots[i].hogp[j]) {
+				return &slots[i];
+			}
+		}
+	}
+
+	return NULL;
+}
+
+static size_t hogp_instance_index(const struct peripheral_slot *slot,
+				  const struct bt_hogp *hogp)
+{
+	return (size_t)(hogp - slot->hogp);
+}
+
+static void hids_on_ready(struct peripheral_slot *slot, size_t hogp_idx);
 
 #if defined(CONFIG_BT_HOGP_SCI)
 static void sci_mode_change_timeout_fn(struct k_work *work);
@@ -426,6 +454,7 @@ static void discovery_completed_cb(struct bt_gatt_dm *dm,
 				   void *context)
 {
 	struct peripheral_slot *slot = context;
+	uint8_t idx;
 	int err;
 
 	if (slot == NULL) {
@@ -433,25 +462,51 @@ static void discovery_completed_cb(struct bt_gatt_dm *dm,
 		return;
 	}
 
-	printk("The discovery procedure succeeded\n");
+	idx = slot->hids_instance_count;
+	if (idx >= HIDS_INSTANCE_COUNT) {
+		printk("Unexpected extra HID service instance during discovery\n");
+		goto release;
+	}
+
+	printk("HID service instance %u discovery succeeded\n", idx);
 
 	bt_gatt_dm_data_print(dm);
 
-	err = bt_hogp_handles_assign(dm, &slot->hogp);
+	err = bt_hogp_handles_assign(dm, &slot->hogp[idx]);
 	if (err) {
-		printk("Could not init HIDS client object, error: %d\n", err);
+		printk("Could not init HIDS client object %u, error: %d\n", idx, err);
+	} else {
+		slot->hids_instance_count++;
 	}
 
+release:
 	err = bt_gatt_dm_data_release(dm);
 	if (err) {
 		printk("Could not release the discovery data, error "
 		       "code: %d\n", err);
+	}
+
+	if (IS_ENABLED(CONFIG_SAMPLE_BT_HIDS_MULTIPLE_SERVICES) &&
+	    slot->hids_instance_count < HIDS_INSTANCE_COUNT) {
+		err = bt_gatt_dm_continue(dm, slot);
+		if (err) {
+			printk("Could not continue HID service discovery, error: %d\n", err);
+		}
 	}
 }
 
 static void discovery_service_not_found_cb(struct bt_conn *conn,
 					   void *context)
 {
+	struct peripheral_slot *slot = context;
+
+	if (IS_ENABLED(CONFIG_SAMPLE_BT_HIDS_MULTIPLE_SERVICES) && slot &&
+	    slot->hids_instance_count > 0) {
+		printk("Discovered %u HID service instance(s) on the peripheral\n",
+		       slot->hids_instance_count);
+		return;
+	}
+
 	printk("The service could not be found during the discovery\n");
 }
 
@@ -477,6 +532,10 @@ static void gatt_discover(struct bt_conn *conn)
 		printk("Peripheral slot is NULL\n");
 		return;
 	}
+
+	slot->hids_instance_count = 0;
+	slot->hids_ready_count = 0;
+	slot->sci_mode_notify_count = 0;
 
 	err = bt_gatt_dm_start(conn, BT_UUID_HIDS, &discovery_cb, slot);
 	if (err) {
@@ -569,12 +628,16 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		slot->sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
 	}
 
-	(void)k_work_cancel(&slot->hids_ready_work);
-
-	if (bt_hogp_assign_check(&slot->hogp)) {
-		printk("HIDS client active - releasing");
-		bt_hogp_release(&slot->hogp);
+	for (size_t j = 0; j < HIDS_INSTANCE_COUNT; j++) {
+		if (bt_hogp_assign_check(&slot->hogp[j])) {
+			printk("HIDS client instance %zu active - releasing\n", j);
+			bt_hogp_release(&slot->hogp[j]);
+		}
 	}
+
+	slot->hids_instance_count = 0;
+	slot->hids_ready_count = 0;
+	slot->sci_mode_notify_count = 0;
 
 	bt_conn_unref(slot->conn);
 	slot->conn = NULL;
@@ -851,7 +914,12 @@ static uint8_t hogp_notify_cb(struct bt_hogp *hogp,
 			     uint8_t err,
 			     const uint8_t *data)
 {
-	struct peripheral_slot *slot = CONTAINER_OF(hogp, struct peripheral_slot, hogp);
+	struct peripheral_slot *slot = slot_by_hogp(hogp);
+	size_t hogp_idx = slot ? hogp_instance_index(slot, hogp) : 0;
+
+	if (!slot) {
+		return BT_GATT_ITER_STOP;
+	}
 
 	if (!data) {
 		return BT_GATT_ITER_STOP;
@@ -872,7 +940,8 @@ static uint8_t hogp_notify_cb(struct bt_hogp *hogp,
 	uint8_t size = bt_hogp_rep_size(rep);
 
 	PRINT_PERIPH_INDEX_STR_FOR_SLOT(slot, slots);
-	printk("Notification, id: %u, size: %u, data:",
+	printk("Notification, HID service instance %zu, id: %u, size: %u, data:",
+	       hogp_idx,
 	       bt_hogp_rep_id(rep),
 	       size);
 	for (i = 0; i < size; ++i) {
@@ -888,11 +957,11 @@ static uint8_t hogp_boot_mouse_report(struct bt_hogp *hogp,
 				     uint8_t err,
 				     const uint8_t *data)
 {
-	struct peripheral_slot *slot = CONTAINER_OF(hogp, struct peripheral_slot, hogp);
+	struct peripheral_slot *slot = slot_by_hogp(hogp);
 
 	ARG_UNUSED(err);
 
-	if (!data) {
+	if (!slot || !data) {
 		return BT_GATT_ITER_STOP;
 	}
 
@@ -924,11 +993,11 @@ static uint8_t hogp_boot_kbd_report(struct bt_hogp *hogp,
 				   uint8_t err,
 				   const uint8_t *data)
 {
-	struct peripheral_slot *slot = CONTAINER_OF(hogp, struct peripheral_slot, hogp);
+	struct peripheral_slot *slot = slot_by_hogp(hogp);
 
 	ARG_UNUSED(err);
 
-	if (!data) {
+	if (!slot || !data) {
 		return BT_GATT_ITER_STOP;
 	}
 
@@ -957,9 +1026,13 @@ static uint8_t hogp_boot_kbd_report(struct bt_hogp *hogp,
 
 static void hogp_ready_cb(struct bt_hogp *hogp)
 {
-	struct peripheral_slot *slot = CONTAINER_OF(hogp, struct peripheral_slot, hogp);
+	struct peripheral_slot *slot = slot_by_hogp(hogp);
 
-	k_work_submit(&slot->hids_ready_work);
+	if (!slot) {
+		return;
+	}
+
+	hids_on_ready(slot, hogp_instance_index(slot, hogp));
 }
 
 static const char *sci_mode_to_string(enum bt_hids_sci_mode_value mode)
@@ -1005,6 +1078,12 @@ static void sci_mode_notify_cb(struct bt_conn *conn, const uint8_t mode)
 	PRINT_PERIPH_INDEX_STR_FOR_SLOT(slot, slots);
 	printk("SCI mode changed notification received, new mode: %s\n", mode_str);
 
+	if (IS_ENABLED(CONFIG_SAMPLE_BT_HIDS_MULTIPLE_SERVICES)) {
+		slot->sci_mode_notify_count++;
+		printk("SCI mode notifications received: %u/%u\n",
+		       slot->sci_mode_notify_count, slot->hids_instance_count);
+	}
+
 	if (mode == slot->sci_mode_requested) {
 		k_work_cancel_delayable(&slot->sci_mode_timeout);
 		slot->sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
@@ -1013,29 +1092,28 @@ static void sci_mode_notify_cb(struct bt_conn *conn, const uint8_t mode)
 	}
 }
 
-static void hids_on_ready(struct k_work *work)
+static void hids_on_ready(struct peripheral_slot *slot, size_t hogp_idx)
 {
-	struct peripheral_slot *slot = CONTAINER_OF(work, struct peripheral_slot, hids_ready_work);
-	struct bt_hogp *hogp = &slot->hogp;
+	struct bt_hogp *hogp = &slot->hogp[hogp_idx];
 	int err;
 	struct bt_hogp_rep_info *rep = NULL;
 
-	printk("HIDS is ready to work\n");
+	printk("HID service instance %zu is ready to work\n", hogp_idx);
 
 	while (NULL != (rep = bt_hogp_rep_next(hogp, rep))) {
 		if (bt_hogp_rep_type(rep) ==
 		    BT_HIDS_REPORT_TYPE_INPUT) {
-			printk("Subscribe to report id: %u\n",
-			       bt_hogp_rep_id(rep));
+			printk("Instance %zu: subscribe to report id: %u\n",
+			       hogp_idx, bt_hogp_rep_id(rep));
 			err = bt_hogp_rep_subscribe(hogp, rep,
-							   hogp_notify_cb);
+						    hogp_notify_cb);
 			if (err) {
 				printk("Subscribe error (%d)\n", err);
 			}
 		}
 	}
 	if (hogp->rep_boot.kbd_inp) {
-		printk("Subscribe to boot keyboard report\n");
+		printk("Instance %zu: subscribe to boot keyboard report\n", hogp_idx);
 		err = bt_hogp_rep_subscribe(hogp,
 					   hogp->rep_boot.kbd_inp,
 					   hogp_boot_kbd_report);
@@ -1044,7 +1122,7 @@ static void hids_on_ready(struct k_work *work)
 		}
 	}
 	if (hogp->rep_boot.mouse_inp) {
-		printk("Subscribe to boot mouse report\n");
+		printk("Instance %zu: subscribe to boot mouse report\n", hogp_idx);
 		err = bt_hogp_rep_subscribe(hogp,
 					   hogp->rep_boot.mouse_inp,
 					   hogp_boot_mouse_report);
@@ -1060,12 +1138,15 @@ static void hids_on_ready(struct k_work *work)
 		}
 	}
 
-	if (IS_ENABLED(CONFIG_BT_FRAME_SPACE_UPDATE)) {
-		select_lowest_frame_space(slot->conn);
-	} else {
-		/* Unused */
-		(void) select_lowest_frame_space;
-		(void) frame_space_updated;
+	slot->hids_ready_count++;
+	if (slot->hids_ready_count == slot->hids_instance_count) {
+		if (IS_ENABLED(CONFIG_BT_FRAME_SPACE_UPDATE)) {
+			select_lowest_frame_space(slot->conn);
+		} else {
+			/* Unused */
+			(void) select_lowest_frame_space;
+			(void) frame_space_updated;
+		}
 	}
 }
 
@@ -1095,7 +1176,7 @@ static void button_bootmode(void)
 	bool any_device_ready = false;
 
 	for (size_t i = 0; i < ARRAY_SIZE(slots); i++) {
-		struct bt_hogp *hogp = &slots[i].hogp;
+		struct bt_hogp *hogp = &slots[i].hogp[0];
 		enum bt_hids_pm pm;
 		enum bt_hids_pm new_pm;
 
@@ -1126,7 +1207,11 @@ static void hidc_write_cb(struct bt_hogp *hidc,
 			  struct bt_hogp_rep_info *rep,
 			  uint8_t err)
 {
-	struct peripheral_slot *slot = CONTAINER_OF(hidc, struct peripheral_slot, hogp);
+	struct peripheral_slot *slot = slot_by_hogp(hidc);
+
+	if (!slot) {
+		return;
+	}
 
 	PRINT_PERIPH_INDEX_STR_FOR_SLOT(slot, slots);
 	printk("Caps lock sent\n");
@@ -1143,7 +1228,7 @@ static void button_capslock(void)
 	data = capslock_state ? 0x02 : 0;
 
 	for (size_t i = 0; i < ARRAY_SIZE(slots); i++) {
-		struct bt_hogp *hogp = &slots[i].hogp;
+		struct bt_hogp *hogp = &slots[i].hogp[0];
 
 		if (!bt_hogp_ready_check(hogp)) {
 			continue;
@@ -1192,7 +1277,11 @@ static uint8_t capslock_read_cb(struct bt_hogp *hogp,
 			     uint8_t err,
 			     const uint8_t *data)
 {
-	struct peripheral_slot *slot = CONTAINER_OF(hogp, struct peripheral_slot, hogp);
+	struct peripheral_slot *slot = slot_by_hogp(hogp);
+
+	if (!slot) {
+		return BT_GATT_ITER_STOP;
+	}
 
 	PRINT_PERIPH_INDEX_STR_FOR_SLOT(slot, slots);
 
@@ -1216,7 +1305,11 @@ static void capslock_write_cb(struct bt_hogp *hogp,
 			      uint8_t err)
 {
 	int ret;
-	struct peripheral_slot *slot = CONTAINER_OF(hogp, struct peripheral_slot, hogp);
+	struct peripheral_slot *slot = slot_by_hogp(hogp);
+
+	if (!slot) {
+		return;
+	}
 
 	PRINT_PERIPH_INDEX_STR_FOR_SLOT(slot, slots);
 	printk("Capslock write result: %u\n", err);
@@ -1237,7 +1330,7 @@ static void button_capslock_rsp(void)
 	data = capslock_state ? 0x02 : 0;
 
 	for (size_t i = 0; i < ARRAY_SIZE(slots); i++) {
-		struct bt_hogp *hogp = &slots[i].hogp;
+		struct bt_hogp *hogp = &slots[i].hogp[0];
 
 		if (!bt_hogp_ready_check(hogp)) {
 			PRINT_PERIPH_INDEX_STR(i);
@@ -1339,7 +1432,7 @@ static void button_sci_mode_next(void)
 	printk("Requesting SCI mode %s on all ready devices\n", sci_mode_to_string(mode));
 
 	for (size_t i = 0; i < ARRAY_SIZE(slots); i++) {
-		struct bt_hogp *hogp = &slots[i].hogp;
+		struct bt_hogp *hogp = &slots[i].hogp[0];
 		int err = 0;
 
 		if (!bt_hogp_ready_check(hogp)) {
@@ -1393,6 +1486,7 @@ static void button_sci_mode_next(void)
 			printk("Sent %s SCI mode request to the device\n",
 			       sci_mode_to_string(mode));
 			slots[i].sci_mode_requested = mode;
+			slots[i].sci_mode_notify_count = 0;
 			k_work_schedule(&slots[i].sci_mode_timeout,
 					K_MSEC(HID_SCI_MODE_CHANGE_TIMEOUT_MS));
 		} else {
@@ -1567,8 +1661,9 @@ int main(void)
 			k_work_init_delayable(&cont_rx_slots[i].cont_report_rx_exit_work,
 					      cont_report_rx_exit_work_fn);
 		}
-		bt_hogp_init(&slots[i].hogp, &hogp_init_params);
-		k_work_init(&slots[i].hids_ready_work, hids_on_ready);
+		for (size_t j = 0; j < HIDS_INSTANCE_COUNT; j++) {
+			bt_hogp_init(&slots[i].hogp[j], &hogp_init_params);
+		}
 #if defined(CONFIG_BT_HOGP_SCI)
 		k_work_init_delayable(&slots[i].sci_mode_timeout, sci_mode_change_timeout_fn);
 		slots[i].sci_mode_requested = BT_HIDS_SCI_MODE_NONE;
