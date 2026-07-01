@@ -67,15 +67,17 @@ Use the :kconfig:option:`CONFIG_BT_HIDS_SCI` Kconfig option to enable HID SCI on
 
 The feature requires the Zephyr :kconfig:option:`CONFIG_BT_SHORTER_CONNECTION_INTERVALS` option.
 
-.. note::
-   Currently, only one HID service can be present on a HID device supporting HID SCI.
-   An attempt to initialize a second HID service will result in an error.
+Up to :kconfig:option:`CONFIG_BT_HIDS_SCI_MAX_INSTANCE_COUNT` HID Service instances may be registered in a device supporting HID SCI.
+To comply with the `HID Service Specification`_ (chapter 2.13), the HID SCI Mode characteristic of all of the HID Service instances must contain the same value.
+Therefore, the value is kept in sync across all instances.
+When the mode changes, each instance notifies subscribed hosts on its own HID SCI Mode characteristic.
 
 .. note::
    In case of multiple HID hosts connected to a single HID device supporting HID SCI, a separate HID SCI mode as well as a separate set of connection parameters is used for each connected host.
 
 Additional Kconfig options:
 
+* :kconfig:option:`CONFIG_BT_HIDS_SCI_MAX_INSTANCE_COUNT` - Maximum number of HID Service instances that may be registered when HID SCI is enabled.
 * :kconfig:option:`CONFIG_BT_HIDS_SCI_LOW_POWER_MODE` - Enable HID SCI Low Power mode support.
 
 Application integration

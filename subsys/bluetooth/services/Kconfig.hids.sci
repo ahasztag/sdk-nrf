@@ -11,6 +11,14 @@ menuconfig BT_HIDS_SCI
 
 if BT_HIDS_SCI
 
+config BT_HIDS_SCI_MAX_INSTANCE_COUNT
+	int "Maximum HID service instances with SCI"
+	default 1
+	range 1 5
+	help
+	  Maximum number of HID Service instances that may be registered
+	  on a single device when SCI is enabled.
+
 config BT_HIDS_SCI_LOW_POWER_MODE
 	bool "HID SCI low power mode"
 	default y

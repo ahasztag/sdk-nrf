@@ -50,6 +50,8 @@
 	(BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)                     \
 	)
 
+LOG_MODULE_REGISTER(bt_hids, CONFIG_BT_HIDS_LOG_LEVEL);
+
 #if defined(CONFIG_BT_HIDS_SCI)
 
 /** Expands to CONFIG_BT_HIDS_SCI_{mode}{suffix} via token pasting.
@@ -108,21 +110,126 @@ HIDS_SCI_DEFINE_CONN_RATE_PARAM(hids_sci_conn_rate_low_power, LOW_POWER);
 #endif
 HIDS_SCI_DEFINE_CONN_RATE_PARAM(hids_sci_conn_rate_full_range, FULL_RANGE);
 
-/* TODO: Currently only a single HID service supporting SCI is supported.
- * Fix this in NCSDK-38984
- *
- * A pointer to the HID service is stored to be able to notify the service about
- * SCI mode changes and make sure that only one SCI-supporting HID service is present.
- */
-static struct bt_hids *sci_mode_hids_obj;
-#endif /* CONFIG_BT_HIDS_SCI */
+static struct bt_hids *hids_sci_instances[CONFIG_BT_HIDS_SCI_MAX_INSTANCE_COUNT];
 
-LOG_MODULE_REGISTER(bt_hids, CONFIG_BT_HIDS_LOG_LEVEL);
+static bool hids_sci_is_any_instance_registered(void)
+{
+	bool has_registered_instance = false;
+
+	for (size_t i = 0; i < ARRAY_SIZE(hids_sci_instances); i++) {
+		if (hids_sci_instances[i] != NULL) {
+			has_registered_instance = true;
+			break;
+		}
+	}
+
+	return has_registered_instance;
+}
+
+static int hids_sci_register_instance(struct bt_hids *hids_obj)
+{
+	int res = -ENOMEM;
+
+	for (size_t i = 0; i < ARRAY_SIZE(hids_sci_instances); i++) {
+		if (hids_sci_instances[i] == NULL) {
+			hids_sci_instances[i] = hids_obj;
+			res = 0;
+			break;
+		}
+	}
+
+	if (res != 0) {
+		LOG_ERR("Failed to register HID SCI supporting instance - out of slots");
+	}
+
+	return res;
+}
+
+static void hids_sci_unregister_instance(struct bt_hids *hids_obj)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(hids_sci_instances); i++) {
+		if (hids_sci_instances[i] == hids_obj) {
+			hids_sci_instances[i] = NULL;
+			break;
+		}
+	}
+}
+
+static bool hids_sci_has_conn_data(struct bt_conn *conn)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(hids_sci_instances); i++) {
+		struct bt_hids *hids_obj = hids_sci_instances[i];
+
+		if (hids_obj == NULL) {
+			continue;
+		}
+
+		if (bt_conn_ctx_is_allocated(hids_obj->conn_ctx, conn)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static enum bt_hids_sci_mode_value hids_sci_mode_get_from_any(struct bt_conn *conn)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(hids_sci_instances); i++) {
+		struct bt_hids *hids_obj = hids_sci_instances[i];
+		struct bt_hids_conn_data *conn_data;
+
+		if (hids_obj == NULL) {
+			continue;
+		}
+
+		if (bt_conn_ctx_is_allocated(hids_obj->conn_ctx, conn)) {
+			conn_data = bt_conn_ctx_get(hids_obj->conn_ctx, conn);
+			__ASSERT_NO_MSG(conn_data != NULL);
+
+			enum bt_hids_sci_mode_value mode =
+				(enum bt_hids_sci_mode_value)conn_data->sci_mode;
+
+			bt_conn_ctx_release(hids_obj->conn_ctx, conn_data);
+			return mode;
+		}
+	}
+
+	return BT_HIDS_SCI_MODE_NONE;
+}
+
+static void hids_sci_mode_propagate(struct bt_conn *conn,
+				    enum bt_hids_sci_mode_value mode)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(hids_sci_instances); i++) {
+		struct bt_hids *hids_obj = hids_sci_instances[i];
+		struct bt_hids_conn_data *conn_data;
+
+		if (hids_obj == NULL) {
+			continue;
+		}
+
+		if (bt_conn_ctx_is_allocated(hids_obj->conn_ctx, conn)) {
+			conn_data = bt_conn_ctx_get(hids_obj->conn_ctx, conn);
+			__ASSERT_NO_MSG(conn_data != NULL);
+			conn_data->sci_mode = (uint8_t)mode;
+			bt_conn_ctx_release(hids_obj->conn_ctx, conn_data);
+		}
+	}
+}
+#endif /* CONFIG_BT_HIDS_SCI */
 
 int bt_hids_connected(struct bt_hids *hids_obj, struct bt_conn *conn)
 {
 	__ASSERT_NO_MSG(conn != NULL);
 	__ASSERT_NO_MSG(hids_obj != NULL);
+
+#if defined(CONFIG_BT_HIDS_SCI)
+	/** Get the SCI mode for this connection.
+	 *  If bt_hids_connected for this connection was not yet called for any other service,
+	 *  hids_sci_mode_get_from_any will return BT_HIDS_SCI_MODE_NONE.
+	 */
+	enum bt_hids_sci_mode_value sci_mode = hids_sci_mode_get_from_any(conn);
+#endif /* CONFIG_BT_HIDS_SCI */
 
 	struct bt_hids_conn_data *conn_data =
 		bt_conn_ctx_alloc(hids_obj->conn_ctx, conn);
@@ -161,7 +268,7 @@ int bt_hids_connected(struct bt_hids *hids_obj, struct bt_conn *conn)
 	}
 
 #if defined(CONFIG_BT_HIDS_SCI)
-	conn_data->sci_mode = BT_HIDS_SCI_MODE_NONE;
+	conn_data->sci_mode = (uint8_t)sci_mode;
 #endif
 
 	bt_conn_ctx_release(hids_obj->conn_ctx, (void *)conn_data);
@@ -852,15 +959,11 @@ static ssize_t hids_sci_mode_read(struct bt_conn *conn,
 {
 	LOG_DBG("Reading from SCI Mode characteristic.");
 
-	if (!sci_mode_hids_obj) {
-		LOG_ERR("No HID service found");
-		return BT_GATT_ERR(BT_ATT_ERR_INSUFFICIENT_RESOURCES);
-	}
-
+	struct bt_hids_sci_mode_data *sci_mode_data = attr->user_data;
+	struct bt_hids *hids_obj = CONTAINER_OF(sci_mode_data, struct bt_hids, sci_mode_data);
 	ssize_t ret_len;
-
 	struct bt_hids_conn_data *conn_data =
-		bt_conn_ctx_get(sci_mode_hids_obj->conn_ctx, conn);
+		bt_conn_ctx_get(hids_obj->conn_ctx, conn);
 
 	if (!conn_data) {
 		LOG_ERR("The context was not found");
@@ -868,12 +971,11 @@ static ssize_t hids_sci_mode_read(struct bt_conn *conn,
 	}
 
 	ret_len = bt_gatt_attr_read(conn, attr, buf, len, offset, &conn_data->sci_mode,
-				 sizeof(uint8_t));
+				    sizeof(uint8_t));
 
-	bt_conn_ctx_release(sci_mode_hids_obj->conn_ctx, (void *)conn_data);
+	bt_conn_ctx_release(hids_obj->conn_ctx, conn_data);
 
 	return ret_len;
-
 }
 
 static void hids_sci_mode_ccc_changed(struct bt_gatt_attr const *attr, uint16_t value)
@@ -913,21 +1015,17 @@ int bt_hids_sci_mode_get(struct bt_conn *conn, enum bt_hids_sci_mode_value *mode
 		return -EINVAL;
 	}
 
-	if (sci_mode_hids_obj == NULL) {
+	if (!hids_sci_is_any_instance_registered()) {
 		LOG_ERR("No HID service found");
 		return -ENOENT;
 	}
 
-	struct bt_hids_conn_data *conn_data = bt_conn_ctx_get(sci_mode_hids_obj->conn_ctx, conn);
-
-	if (!conn_data) {
+	if (!hids_sci_has_conn_data(conn)) {
 		LOG_WRN("The context was not found");
 		return -ENOENT;
 	}
 
-	*mode = conn_data->sci_mode;
-
-	bt_conn_ctx_release(sci_mode_hids_obj->conn_ctx, (void *)conn_data);
+	*mode = hids_sci_mode_get_from_any(conn);
 
 	return 0;
 }
@@ -942,21 +1040,18 @@ int bt_hids_sci_mode_change_request(struct bt_conn *conn,
 		return -EINVAL;
 	}
 
-	if (sci_mode_hids_obj == NULL) {
+	if (!hids_sci_is_any_instance_registered()) {
 		LOG_ERR("No HID service found");
 		return -ENOENT;
 	}
 
-	struct bt_hids_conn_data *conn_data = bt_conn_ctx_get(sci_mode_hids_obj->conn_ctx, conn);
-
-	if (!conn_data) {
+	if (!hids_sci_has_conn_data(conn)) {
 		LOG_WRN("The context was not found");
 		return -ENOENT;
 	}
 
 	params = get_sci_conn_rate_param_for_mode(mode);
 	if (params == NULL) {
-		bt_conn_ctx_release(sci_mode_hids_obj->conn_ctx, (void *)conn_data);
 		return -EINVAL;
 	}
 
@@ -965,8 +1060,6 @@ int bt_hids_sci_mode_change_request(struct bt_conn *conn,
 	if (err) {
 		LOG_ERR("SCI conn rate request failed (%d)", err);
 	}
-
-	bt_conn_ctx_release(sci_mode_hids_obj->conn_ctx, (void *)conn_data);
 
 	return err;
 }
@@ -1025,12 +1118,22 @@ static void sci_mode_update_notify(struct bt_hids *hids_obj, struct bt_conn *con
 	}
 }
 
+static void sci_mode_update_notify_all(struct bt_conn *conn, uint8_t mode)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(hids_sci_instances); i++) {
+		if (hids_sci_instances[i] != NULL
+		    && bt_conn_ctx_is_allocated(hids_sci_instances[i]->conn_ctx, conn)) {
+			sci_mode_update_notify(hids_sci_instances[i], conn, mode);
+		}
+	}
+}
+
 int bt_hids_sci_mode_updated(struct bt_conn *conn, enum bt_hids_sci_mode_value mode)
 {
 	int err = 0;
 
-	if (!sci_mode_hids_obj) {
-		LOG_WRN("SCI mode updated, but no HID service found");
+	if (!hids_sci_is_any_instance_registered()) {
+		LOG_WRN("SCI mode updated, but no registered HID service found");
 		return -ENOENT;
 	}
 	if (conn == NULL) {
@@ -1048,21 +1151,18 @@ int bt_hids_sci_mode_updated(struct bt_conn *conn, enum bt_hids_sci_mode_value m
 		return -EINVAL;
 	}
 
-	struct bt_hids_conn_data *conn_data =
-		bt_conn_ctx_get(sci_mode_hids_obj->conn_ctx, conn);
-	if (!conn_data) {
+	if (!hids_sci_has_conn_data(conn)) {
 		LOG_ERR("The context was not found");
 		return -ENOENT;
 	}
 
-	if (conn_data->sci_mode != mode) {
-		conn_data->sci_mode = mode;
-		LOG_DBG("SCI mode updated to: %d", conn_data->sci_mode);
+	enum bt_hids_sci_mode_value current = hids_sci_mode_get_from_any(conn);
 
-		sci_mode_update_notify(sci_mode_hids_obj, conn, (uint8_t) conn_data->sci_mode);
+	if (current != mode) {
+		hids_sci_mode_propagate(conn, mode);
+		LOG_DBG("SCI mode updated to: %d", mode);
+		sci_mode_update_notify_all(conn, (uint8_t)mode);
 	}
-
-	bt_conn_ctx_release(sci_mode_hids_obj->conn_ctx, (void *)conn_data);
 
 	return err;
 }
@@ -1290,17 +1390,6 @@ int bt_hids_init(struct bt_hids *hids_obj,
 
 	int err = 0;
 
-#if defined(CONFIG_BT_HIDS_SCI)
-	if (sci_mode_hids_obj) {
-		/* TODO: NCSDK-38984: This should be fixed,
-		 * more services should be allowed
-		 */
-		LOG_ERR("Currently only one HID service supporting SCI is supported");
-		bt_gatt_pool_free(&hids_obj->gp);
-		return -EALREADY;
-	}
-#endif
-
 	if (init_param->rep_map.size > BT_ATT_MAX_ATTRIBUTE_LEN) {
 		LOG_WRN("Report map size exceeds max ATT attribute length");
 		return -EMSGSIZE;
@@ -1441,7 +1530,7 @@ int bt_hids_init(struct bt_hids *hids_obj,
 			  BT_UUID_HIDS_SCI_MODE,
 			  BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
 			  HIDS_GATT_PERM_DEFAULT & GATT_PERM_READ_MASK,
-			  hids_sci_mode_read, NULL, NULL);
+			  hids_sci_mode_read, NULL, &hids_obj->sci_mode_data);
 
 	hids_obj->sci_mode_data.att_ind = hids_obj->gp.svc.attr_count - 1;
 	BT_GATT_POOL_CCC(&hids_obj->gp,
@@ -1449,14 +1538,18 @@ int bt_hids_init(struct bt_hids *hids_obj,
 			 hids_sci_mode_ccc_changed,
 			 HIDS_GATT_PERM_DEFAULT);
 
-	sci_mode_hids_obj = hids_obj;
+	err = hids_sci_register_instance(hids_obj);
+	if (err) {
+		bt_gatt_pool_free(&hids_obj->gp);
+		return err;
+	}
 #endif
 
 	/* Register HIDS attributes in GATT database. */
 	err = bt_gatt_service_register(&hids_obj->gp.svc);
 	if (err) {
 #if defined(CONFIG_BT_HIDS_SCI)
-		sci_mode_hids_obj = NULL;
+		hids_sci_unregister_instance(hids_obj);
 #endif
 		bt_gatt_pool_free(&hids_obj->gp);
 		return err;
@@ -1490,9 +1583,7 @@ int bt_hids_uninit(struct bt_hids *hids_obj)
 	hids_obj->conn_ctx = conn_ctx;
 
 #if defined(CONFIG_BT_HIDS_SCI)
-	if (sci_mode_hids_obj == hids_obj) {
-		sci_mode_hids_obj = NULL;
-	}
+	hids_sci_unregister_instance(hids_obj);
 #endif
 
 	return 0;

@@ -539,6 +539,11 @@ Bluetooth libraries and services
 
   * Removed the nRF52 and nRF53 Series support.
 
+* :ref:`hids_readme` library:
+
+  * Added support for registering multiple HID Service instances when :kconfig:option:`CONFIG_BT_HIDS_SCI` is enabled.
+    The number of instances is configured using the new :kconfig:option:`CONFIG_BT_HIDS_SCI_MAX_INSTANCE_COUNT` Kconfig option.
+
 Common Application Framework
 ----------------------------
 
