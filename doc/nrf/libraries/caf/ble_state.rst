@@ -92,6 +92,14 @@ A Bluetooth LE Central can use the :c:func:`bt_conn_le_conn_rate_set_defaults` A
    They are called if you use the non-SCI (connection parameter update) API to update the connection parameters.
    However, do not use the non-SCI API if both the device and peer support the SCI.
 
+Frame space update
+==================
+
+If you are using the Bluetooth Frame Space Update feature, you can update the frame space using the :c:func:`bt_conn_le_frame_space_update` function.
+The module submits a :c:struct:`ble_peer_frame_space_updated_event` to inform other application modules about frame space changes.
+The event is also emitted when a frame space update request fails.
+In this case, it contains the status code of the failed request.
+
 Connection references
 =====================
 
