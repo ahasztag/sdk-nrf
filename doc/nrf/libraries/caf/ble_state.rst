@@ -100,6 +100,12 @@ The module submits a :c:struct:`ble_peer_frame_space_updated_event` to inform ot
 The event is also emitted when a frame space update request fails.
 In this case, it contains the status code of the failed request.
 
+PHY update
+==========
+
+If you are using the Bluetooth PHY Update feature, you can update the PHY with the :c:func:`bt_conn_le_phy_update` API.
+The module submits a :c:struct:`ble_peer_phy_updated_event` to inform other application modules about PHY changes.
+
 Connection references
 =====================
 
