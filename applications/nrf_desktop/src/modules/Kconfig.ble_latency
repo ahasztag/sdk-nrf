@@ -49,6 +49,15 @@ config DESKTOP_BLE_LATENCY_PM_EVENTS
 	help
 	  React on power management events in BLE latency module.
 
+config DESKTOP_BLE_LATENCY_SCI_INIT_CONN_RATE_DELAY_MS
+	int "Initial connection rate delay [ms]"
+	default BT_CONN_PARAM_UPDATE_TIMEOUT
+	help
+	  Minimum delay before requesting the initial connection rate.
+	  The delay is needed to avoid conflicts with LL processing on the remote
+	  (for example due to auto PHY update procedures) leading to potential
+	  disconnects.
+
 module = DESKTOP_BLE_LATENCY
 module-str = BLE latency
 source "subsys/logging/Kconfig.template.log_config"

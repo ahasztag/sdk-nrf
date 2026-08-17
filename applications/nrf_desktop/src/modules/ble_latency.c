@@ -30,9 +30,12 @@ LOG_MODULE_REGISTER(MODULE, CONFIG_DESKTOP_BLE_LATENCY_LOG_LEVEL);
 #define REG_CONN_INTERVAL_LLPM_MASK	0x0d00
 #define REG_CONN_INTERVAL_BLE_DEFAULT	0x0006
 
+#define SCI_REQUIRED_FEATURE_PAGE	1
+
 static struct bt_conn *active_conn;
 static struct k_work_delayable security_timeout;
 static struct k_work_delayable low_latency_check;
+static struct k_work_delayable remote_sci_fast_request;
 
 enum {
 	CONN_LOW_LATENCY_ENABLED	= BIT(0),
@@ -305,13 +308,17 @@ static void conn_params_updated(const struct ble_peer_conn_params_event *event)
 
 	if (IS_ENABLED(CONFIG_DESKTOP_BLE_LATENCY_HID_SCI_ENABLE) &&
 	    (latency_state & CONN_IS_SCI)) {
-		LOG_WRN("Unexpected non-SCI connection parameters update while SCI is active");
+		/* This is a valid case, as CONN_IS_SCI is set on connection,
+		 * as soon as it is known that the central supports SCI.
+		 * The central may still decide it wants to use the non-SCI
+		 * Conn Params API.
+		 */
+		LOG_WRN("Connection parameters update while SCI is active.");
+		LOG_WRN("The connection will be switched to the non-SCI mode.");
 
+		latency_state &= ~CONN_IS_SCI;
 		latency_state &= ~CONN_IS_SCI_PARAM_UPDATE_PENDING;
-		latency_state |= CONN_IS_SCI_OUT_OF_SPEC;
-		(void)k_work_cancel_delayable(&low_latency_check);
-
-		return;
+		latency_state &= ~CONN_IS_SCI_OUT_OF_SPEC;
 	}
 
 	__ASSERT_NO_MSG(event->interval_min == event->interval_max);
@@ -612,10 +619,66 @@ static void conn_rate_updated(const struct ble_peer_sci_conn_rate_event *event)
 	}
 }
 
+static void remote_sci_fast_request_fn(struct k_work *w)
+{
+	ARG_UNUSED(w);
+
+	if (!active_conn) {
+		return;
+	}
+
+	if (!(latency_state & CONN_IS_SCI)) {
+		/* Remote switched out of SCI mode during the delay. */
+		return;
+	}
+
+	hid_sci_mode_request(BT_HIDS_SCI_MODE_FAST);
+}
+
+static void read_all_remote_feat_complete(
+	struct bt_conn *conn,
+	const struct bt_conn_le_read_all_remote_feat_complete *params)
+{
+	bool remote_sci_supported = BT_FEAT_LE_SHORTER_CONN_INTERVALS(params->features) &&
+				    BT_FEAT_LE_SHORTER_CONN_INTERVALS_HOST_SUPP(params->features);
+
+	if (remote_sci_supported) {
+		/* Defer the FAST mode request to avoid colliding with the central's
+		 * connect-time Link Layer procedures.
+		 */
+		LOG_INF("Remote Bluetooth stack supports SCI. Scheduling HID SCI FAST mode.");
+
+		latency_state |= CONN_IS_SCI;
+		/* This is needed so that the first HID SCI mode request will result
+		 * in low latency being requested.
+		 */
+		last_requested_latency_is_low = true;
+
+		(void)k_work_reschedule(&remote_sci_fast_request,
+			K_MSEC(CONFIG_DESKTOP_BLE_LATENCY_SCI_INIT_CONN_RATE_DELAY_MS));
+	} else {
+		LOG_INF("Remote Bluetooth stack does not support SCI.");
+		set_init_conn_params();
+	}
+}
+
 static void init(void)
 {
 	k_work_init_delayable(&security_timeout, security_timeout_fn);
 	k_work_init_delayable(&low_latency_check, low_latency_check_fn);
+
+	if (IS_ENABLED(CONFIG_DESKTOP_BLE_LATENCY_HID_SCI_ENABLE)) {
+		k_work_init_delayable(&remote_sci_fast_request, remote_sci_fast_request_fn);
+
+		static struct bt_conn_cb conn_callbacks = {
+			.read_all_remote_feat_complete = read_all_remote_feat_complete,
+		};
+
+		bt_conn_cb_register(&conn_callbacks);
+	} else {
+		/* Unused */
+		(void)read_all_remote_feat_complete;
+	}
 }
 
 static void use_low_latency(void)
@@ -657,7 +720,21 @@ static bool app_event_handler(const struct app_event_header *aeh)
 			if (IS_ENABLED(CONFIG_DESKTOP_BLE_LOW_LATENCY_LOCK)) {
 				latency_state |= CONN_LOW_LATENCY_LOCKED;
 			}
-			set_init_conn_params();
+
+			if (IS_ENABLED(CONFIG_DESKTOP_BLE_LATENCY_HID_SCI_ENABLE)) {
+				/* Defer setting initial connection params until it
+				 * is known if the remote supports SCI.
+				 * This is done to avoid conflicts between the usage of the
+				 * Conn Params API (non-SCI) and the Conn Rate API (SCI).
+				 * To speed it up, request the read of remote features
+				 * limitted to only the required ones.
+				 */
+				bt_conn_le_read_all_remote_features(active_conn,
+								    SCI_REQUIRED_FEATURE_PAGE);
+			} else {
+				set_init_conn_params();
+			}
+
 			k_work_reschedule(&security_timeout,
 					      SECURITY_FAIL_TIMEOUT_MS);
 			break;
@@ -673,6 +750,7 @@ static bool app_event_handler(const struct app_event_header *aeh)
 			if (IS_ENABLED(CONFIG_DESKTOP_BLE_LATENCY_HID_SCI_ENABLE)) {
 				processed_sci_mode = BT_HIDS_SCI_MODE_NONE;
 				last_requested_sci_mode = BT_HIDS_SCI_MODE_NONE;
+				(void)k_work_cancel_delayable(&remote_sci_fast_request);
 			}
 
 			/* Cancel cannot fail if executed from another work's context. */
