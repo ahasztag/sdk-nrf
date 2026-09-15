@@ -47,6 +47,22 @@ The following Kconfig options are also available for this module:
   This event is used to inform other application modules about PHY changes.
   It depends on :kconfig:option:`CONFIG_BT_USER_PHY_UPDATE`.
   This option is enabled by default.
+* :kconfig:option:`CONFIG_CAF_BLE_STATE_MODULE_SUSPEND_EVENTS` - This option enables module suspend and resume request events support.
+  It depends on :kconfig:option:`CONFIG_CAF_MODULE_SUSPEND_EVENTS`.
+  This option is enabled by default.
+* :kconfig:option:`CONFIG_CAF_BLE_STATE_FREE_HW_RESOURCES_ON_SUSPEND` - This option frees allocated hardware resources when the module is suspended to allow radio reuse.
+  It depends on :kconfig:option:`CONFIG_CAF_BLE_STATE_MODULE_SUSPEND_EVENTS` and :kconfig:option:`CONFIG_BT_LL_SOFTDEVICE`.
+
+Suspending the module
+=====================
+
+When the :kconfig:option:`CONFIG_CAF_BLE_STATE_MODULE_SUSPEND_EVENTS` Kconfig option is enabled, you can suspend the module using a module suspend request event (:c:struct:`module_suspend_req_event`) directed to this module.
+When entering the suspended state, the module disables Bluetooth (:c:func:`bt_disable`).
+You can resume the module using a module resume request event (:c:struct:`module_resume_req_event`) directed to this module.
+When resumed, the module re-enables Bluetooth (:c:func:`bt_enable`).
+
+Set the :kconfig:option:`CONFIG_CAF_BLE_STATE_FREE_HW_RESOURCES_ON_SUSPEND` option to free allocated hardware resources when the module is suspended.
+This allows reusing the radio to communicate over another wireless protocol.
 
 Implementation details
 **********************
