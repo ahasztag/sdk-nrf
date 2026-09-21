@@ -30,9 +30,8 @@ BUILD_ASSERT(DT_SAME_NODE(DT_GPIO_CTLR(DT_ALIAS(sw0), gpios),
 			  DT_GPIO_CTLR(DT_ALIAS(sw2), gpios)));
 
 /* Debugger-visible state updated from the GPIO callback. */
-atomic_t isr_count[NUM_BUTTONS];
+atomic_t isr_count;
 volatile uint32_t isr_pins_log[ISR_LOG_SIZE];
-volatile uint8_t isr_level_log[ISR_LOG_SIZE];
 volatile uint8_t isr_log_idx;
 
 static struct gpio_callback gpio_cb;
@@ -42,23 +41,22 @@ static void gpio_isr(const struct device *port, struct gpio_callback *cb, uint32
 	ARG_UNUSED(port);
 	ARG_UNUSED(cb);
 
+	if (isr_log_idx >= ISR_LOG_SIZE) {
+		return;
+	}
+
+	atomic_inc(&isr_count);
+	isr_pins_log[isr_log_idx] = pins;
+	isr_log_idx++;
+
 	for (size_t i = 0; i < NUM_BUTTONS; i++) {
 		if (!(pins & BIT(buttons[i].pin))) {
 			continue;
 		}
 
-		atomic_inc(&isr_count[i]);
-
-		if (isr_log_idx < ISR_LOG_SIZE) {
-			int val = gpio_pin_get_dt(&buttons[i]);
-
-			isr_pins_log[isr_log_idx] = pins;
-			isr_level_log[isr_log_idx] = (val > 0) ? 1U : 0U;
-			isr_log_idx++;
-		}
-
 		gpio_pin_interrupt_configure_dt(&buttons[i], GPIO_INT_DISABLE);
 	}
+
 }
 
 int main(void)
