@@ -10,7 +10,9 @@ zephyr_library_sources_ifdef(CONFIG_CAF_BLE_ADV ble_adv.c)
 
 zephyr_library_sources_ifdef(CONFIG_CAF_BLE_BOND ble_bond.c)
 
-zephyr_library_sources_ifdef(CONFIG_CAF_BLE_STATE ble_state.c)
+if(CONFIG_CAF_BLE_STATE AND NOT CONFIG_CAF_BLE_STATE_CUSTOM)
+  zephyr_library_sources(ble_state.c)
+endif()
 
 zephyr_library_sources_ifdef(CONFIG_CAF_BLE_STATE_PM ble_state_pm.c)
 

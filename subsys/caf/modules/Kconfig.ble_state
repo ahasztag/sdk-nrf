@@ -17,6 +17,12 @@ menuconfig CAF_BLE_STATE
 
 if CAF_BLE_STATE
 
+config CAF_BLE_STATE_CUSTOM
+	bool "Use custom implementation"
+	help
+	  Do not build the default CAF BLE state module sources.
+	  The application must provide its own implementation.
+
 config CAF_BLE_STATE_SECURITY_REQ
 	bool "Request connection encryption (security level 2)"
 	help
